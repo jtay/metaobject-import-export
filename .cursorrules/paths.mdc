@@ -1,0 +1,17 @@
+---
+alwaysApply: true
+---
+
+# Paths
+
+- TypeScript path aliases (see `tsconfig.json`):
+  - `@/*` → `src/*`
+  - `@utils/*` → `src/utils/*`
+  - `@ui/*` → `src/ui/*`
+  - `@context/*` → `src/context/*`
+- Prefer aliases over relative paths for imports within `src`.
+- Project is ESM; use `type: module` in `package.json` and avoid CommonJS require.
+description:
+globs:
+alwaysApply: false
+---

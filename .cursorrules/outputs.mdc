@@ -1,0 +1,11 @@
+# Outputs
+
+- Output files are in `outputs/` under project root.
+- Discovery reads file stats and if `.json`, parses via `parseExportFile` to extract `environment` and top 5 types by count.
+- When env is missing, try inferring by matching known env names within filename.
+- Sort results descending by `createdMs` then by name.
+- `Home` shows columns: File, Type (ext), Environment, Created, Types (preview).
+description:
+globs:
+alwaysApply: false
+---

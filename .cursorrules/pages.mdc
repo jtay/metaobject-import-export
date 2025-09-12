@@ -1,0 +1,12 @@
+---
+description: Apply when interacting with, or adding/removing from pages in the CLI application
+alwaysApply: false
+---
+# Pages
+
+- Define page entries in `src/ui/navConfig.tsx` with: `key`, `title`, optional `hotkey`, and `component`.
+- Page component conventions:
+  - Call `useFocusRegion('page:<key>', true)` at top-level to claim page focus.
+  - Keep side-effects in hooks; avoid side-effects during render.
+  - Scope keyboard handling to page-specific actions; do not re-implement global navigation.
+- Keep pages small and delegate shared behaviors to contexts or small components (e.g., `FocusTextInput`).

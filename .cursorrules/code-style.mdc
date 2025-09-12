@@ -1,0 +1,19 @@
+---
+alwaysApply: true
+---
+
+# Code Style
+
+- TypeScript, strict mode. Prefer explicit types on exported APIs; allow inference locally.
+- Avoid 1–2 character names. Use descriptive identifiers (Clean Code style).
+- Use early returns and guard clauses. Avoid deep nesting (>2–3 levels).
+- Keep side-effects in hooks (`useEffect`) and async functions; avoid in render.
+- Keep components small; extract helpers to `src/utils/*` or small components under `src/ui/components/*`.
+- Do not add explanatory comments inside code just to narrate actions; favor readable code.
+- Preserve indentation style per file; do not mix tabs/spaces.
+- Prefer multi-line readability over complex one-liners.
+description:
+globs:
+alwaysApply: false
+---
+

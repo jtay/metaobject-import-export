@@ -1,0 +1,11 @@
+---
+description: Apply when interacting with the navigation
+alwaysApply: false
+---
+# Navigation
+
+- Use `useNavigation().navigate(key)` to request a page change.
+- `NavigationProvider` emits `{ key, seq }`; consumers compare `seq` to react once per request.
+- Prefer requesting navigation from event handlers (e.g., Enter on a selected item) rather than during render.
+- Keep page keys in `src/ui/navConfig.tsx`. Hotkeys map to these keys.
+- Avoid storing a second copy of the current page in other contexts; source of truth is `AppLayout`.

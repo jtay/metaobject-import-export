@@ -1,0 +1,19 @@
+---
+alwaysApply: true
+---
+
+# Lint
+
+- Base: ESLint flat config with JS, TypeScript, React, and import plugins.
+- Important rules:
+  - `no-console`: warn (allowed for progress/errors in CLI).
+  - React 19: `react/jsx-uses-react` and `react/react-in-jsx-scope` are off.
+  - TypeScript unused-expression rules are off to allow Ink patterns.
+- Resolver uses TS project; keep path aliases in sync with `tsconfig.json`.
+- Lint scripts:
+  - `npm run lint` (no warnings allowed when gatekeeping)
+  - `npm run lint:fix`
+description:
+globs:
+alwaysApply: false
+---

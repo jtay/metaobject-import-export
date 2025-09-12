@@ -1,0 +1,20 @@
+---
+alwaysApply: true
+---
+# Keybindings
+
+- Global (handled in `AppLayout`):
+  - Tab cycles pages when no focus region is active.
+  - Esc or Ctrl+G gives focus to navbar and clears page focus.
+  - Cmd+<hotkey> jumps directly to a page without focusing the navbar.
+  - Single alphanumerics map to pages by `hotkey` when global hotkeys are enabled.
+- Navbar-focused behavior:
+  - Left/Right to move hover; Enter or Tab selects hovered.
+  - Alphanumeric hotkeys also work while navbar is focused.
+- Page behavior:
+  - Define page-local bindings (e.g., Import preview scroll) within the page.
+  - Do not bind global navigation inside focused regions.
+
+- Letter hotkeys: single alphanumerics map to pages when no modifiers pressed.
+- Reserved: arrows, Shift+*, Ctrl/Cmd/Alt combos for future features.
+- Do not bind global hotkeys inside focused regions.

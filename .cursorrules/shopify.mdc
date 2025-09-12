@@ -1,0 +1,20 @@
+---
+description: Apply when using Shopify remotely
+alwaysApply: false
+---
+# Shopify
+
+- Client: `ShopifyGraphQLClient` wraps HTTPS POST with retry/backoff on 429/5xx and throttled errors.
+  - Default API version `2025-07`; can be overridden.
+- Env-based client: `createShopifyClientFromEnv()` requires `SHOPIFY_STORE_DOMAIN` and `SHOPIFY_ADMIN_API_TOKEN`.
+- Metaobjects:
+  - Query: `QUERY_METAOBJECTS` paginates `metaobjects(type, first, after)` and collects fields with references.
+  - Mutation: `metaobjectUpsert(handle, metaobject)` returns `metaobject { id }` and `userErrors`.
+- Handle references:
+  - Export converts references to `handle://shopify/<Kind>/...` when not retaining IDs.
+  - Import resolves these to GIDs using `HandleResolver` with specialized queries for Metaobject, Product, Page, and ProductVariant by SKU.
+- Avoid hallucinating fields; stick to implemented queries/mutations.
+description:
+globs:
+alwaysApply: false
+---

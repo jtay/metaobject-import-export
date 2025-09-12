@@ -1,0 +1,15 @@
+# Schema
+
+- Types:
+  - `ExportEntry`: `{ handle: string; type: string; fields: Record<string, unknown> }`.
+  - `ExportFile`: `{ environment?: string; count: number; entries: ExportEntry[] }`.
+  - `ExportStats`: `{ total: number; byType: Record<string, number> }`.
+- `normaliseMetaobjectType(type)` ensures app-namespace is `$app:name` by replacing `app--digits--name` with `$app:name`.
+- `parseExportFile(text)` is strict:
+  - Safely coerces strings and objects, drops invalid entries.
+  - Normalises `count` to entries length.
+  - Produces `stats.total` and `stats.byType`.
+description:
+globs:
+alwaysApply: false
+---

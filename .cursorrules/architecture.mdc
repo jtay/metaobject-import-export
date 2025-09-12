@@ -1,0 +1,16 @@
+---
+description: Use when amending or consuming functionality close to the core system.
+alwaysApply: false
+---
+# Architecture
+
+- App is an Ink (React) TUI. Entrypoint is `src/cli.tsx`.
+- Provider tree: `EnvironmentProvider` → `FocusProvider` → `NavigationProvider` → `ImportProvider` → `Root`.
+- `Root` renders environment setup until a `.env*` file is selected, then mounts `AppLayout` with pages from `src/ui/navConfig.tsx`.
+- Contexts:
+  - `EnvironmentContext`: discovers `.env*` files, loads the selected file via `dotenv`, then locks selection for the session.
+  - `FocusContext`: arbitrates focus between page regions and text inputs; disables global hotkeys when any region is active.
+  - `NavigationContext`: allows programmatic page navigation with a monotonic `seq` to broadcast requests.
+  - `ImportContext`: manages selected export file, parsed stats, and import execution state.
+- UI pages: `Home`, `Import`, `Export`. Additions go through `navConfig.tsx`.
+- Utils contain filesystem helpers, export/import logic, and Shopify GraphQL client/wrappers.

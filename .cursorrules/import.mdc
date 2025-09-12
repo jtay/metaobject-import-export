@@ -1,0 +1,14 @@
+# Import
+
+- Selecting a file reads text from `outputs/` and attempts to parse via `parseExportFile`.
+- Show parsed stats (total, byType) when available; handle parse errors gracefully.
+- Running import:
+  - Creates a `ShopifyGraphQLClient` from env.
+  - Transforms fields: resolves `handle://shopify/...` refs to IDs via `HandleResolver`.
+  - Serialises non-scalar values to JSON strings before upsert.
+  - Calls `metaobjectUpsert` with `{ handle: { type, handle }, metaobject: { fields: [{ key, value }] } }`.
+- Report progress as `{ index, total, current, message }`. On error, stop and surface message.
+description:
+globs:
+alwaysApply: false
+---
