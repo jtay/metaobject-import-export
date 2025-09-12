@@ -18,6 +18,7 @@ const QUERY_METAOBJECTS = `query MetaobjectsPage($type: String!, $first: Int!, $
           ... on Product { id handle }
           ... on Page { id handle }
           ... on ProductVariant { id sku product { handle } }
+          ... on Collection { id handle }
         }
         references(first: 25) {
           nodes {
@@ -26,6 +27,7 @@ const QUERY_METAOBJECTS = `query MetaobjectsPage($type: String!, $first: Int!, $
             ... on Product { id handle }
             ... on Page { id handle }
             ... on ProductVariant { id sku product { handle } }
+            ... on Collection { id handle }
           }
         }
       }
@@ -58,7 +60,7 @@ export async function fetchAllMetaobjects(client: ShopifyGraphQLClient, type: st
 	const first = 250;
 	let after: string | undefined = undefined;
 	let all: MetaobjectNode[] = [];
-	// eslint-disable-next-line no-constant-condition
+	 
 	while (true) {
 		const res: GraphQLResponse<{ metaobjects: { pageInfo: { hasNextPage: boolean; endCursor?: string }; nodes: MetaobjectNode[] } }> = await client.request(QUERY_METAOBJECTS, { type, first, after });
 		const page = res.data?.metaobjects;
@@ -111,6 +113,10 @@ export function toHandleRef(resource: { __typename: string; id: string; handle?:
 			if (productHandle && sku) return `handle://shopify/ProductVariant/${productHandle}/${sku}`;
 			return undefined;
 		}
+		case 'Collection': {
+			if (resource.handle) return `handle://shopify/Collection/${resource.handle}`;
+			return undefined;
+		}
 		default:
 			return undefined;
 	}
@@ -131,4 +137,64 @@ export function extractHandleRefsFromFields(fields: MetaobjectNode['fields']): S
 		}
 	}
 	return Array.from(new Set(refs));
+}
+
+// Fetch referencedBy for a metaobject id, filtering supported owner types and paginating fully
+const QUERY_METAOBJECT_REFERENCED_BY = `query MetaobjectReferencedBy($id: ID!, $first: Int!, $after: String) {
+  metaobject(id: $id) {
+    referencedBy(first: $first, after: $after) {
+      pageInfo { hasNextPage endCursor }
+      edges {
+        node {
+          namespace
+          key
+          referencer {
+            __typename
+            ... on Product { id handle }
+            ... on ProductVariant { id sku product { handle } }
+            ... on Page { id handle }
+            ... on Collection { id handle }
+          }
+        }
+      }
+    }
+  }
+}`;
+
+export type BackRefEdge = { node: { namespace: string; key: string; referencer: BackRefReferencer } };
+
+export type BackReference = { ownerType: 'Product' | 'ProductVariant' | 'Collection' | 'Page'; owner: string; namespace: string; key: string };
+
+type ProductRef = { __typename: 'Product'; id: string; handle?: string };
+
+type PageRef = { __typename: 'Page'; id: string; handle?: string };
+
+type CollectionRef = { __typename: 'Collection'; id: string; handle?: string };
+
+type ProductVariantRef = { __typename: 'ProductVariant'; id: string; sku?: string; product?: { handle?: string } };
+
+type BackRefReferencer = ProductRef | PageRef | CollectionRef | ProductVariantRef;
+
+export async function fetchBackReferences(client: ShopifyGraphQLClient, id: string): Promise<BackReference[]> {
+	const first = 250;
+	let after: string | undefined = undefined;
+	const results: BackReference[] = [];
+	 
+	while (true) {
+		const res: GraphQLResponse<{ metaobject: { referencedBy: { pageInfo: { hasNextPage: boolean; endCursor?: string }; edges: BackRefEdge[] } } | null }> = await client.request(QUERY_METAOBJECT_REFERENCED_BY, { id, first, after });
+		const rb = res.data?.metaobject?.referencedBy as { pageInfo: { hasNextPage: boolean; endCursor?: string }; edges: BackRefEdge[] } | undefined;
+		if (!rb) break;
+		for (const e of rb.edges) {
+			const r = e.node.referencer;
+			if (!r) continue;
+			if (r.__typename === 'Product' || r.__typename === 'ProductVariant' || r.__typename === 'Collection' || r.__typename === 'Page') {
+				const ref = toHandleRef(r);
+				const owner = ref ?? r.id;
+				results.push({ ownerType: r.__typename, owner, namespace: e.node.namespace, key: e.node.key });
+			}
+		}
+		if (!rb.pageInfo.hasNextPage) break;
+		after = rb.pageInfo.endCursor ?? undefined;
+	}
+	return results;
 } 

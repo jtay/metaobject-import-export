@@ -33,7 +33,7 @@ export function EnvSetup() {
 			{availableEnvs.length === 0 ? (
 				<Box flexDirection="column">
 					<Text color="yellow">No .env files found in project root.</Text>
-					<Text>Select "+ Create new environment" to get started.</Text>
+					<Text>Select {"\""}+ Create new environment{"\""} to get started.</Text>
 				</Box>
 			) : null}
 			<SelectInput
