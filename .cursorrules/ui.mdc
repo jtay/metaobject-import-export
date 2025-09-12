@@ -1,0 +1,18 @@
+---
+alwaysApply: true
+---
+
+# UI and Layout
+
+- `AppLayout` owns:
+  - Active page state and navbar focus/hover state.
+  - Global key handling for navigation, hotkeys, and returning focus to navbar.
+  - Status/footer line and bordered content region.
+- Use `useStdout()` for dynamic sizing; keep a minimum of 6 rows reserved outside content.
+- Page components should call `useFocusRegion('page:<key>', true)` at top-level to register page focus.
+- Never bind global navigation keys inside page content when a focus region is active. Use `useGlobalHotkeysEnabled()` if needed.
+- Color conventions:
+  - Navbar: cyan border; focused navbar border is green.
+  - Active page border is gray; green when a page region has focus.
+  - Navbar item: yellow when hovered (navbar focused), green when active.
+- Do not perform environment mutations or side-effects in `AppLayout`. Use contexts and hooks.

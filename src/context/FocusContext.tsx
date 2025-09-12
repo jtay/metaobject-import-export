@@ -5,6 +5,7 @@ export type FocusContextValue = {
 	requestFocus: (regionId: string) => void;
 	releaseFocus: (regionId: string) => void;
 	isActive: (regionId: string) => boolean;
+	clearFocus: () => void;
 };
 
 const FocusContext = createContext<FocusContextValue | undefined>(undefined);
@@ -25,9 +26,14 @@ export function FocusProvider({ children }: { children: React.ReactNode }) {
 		}
 	}, []);
 
+	const clearFocus = useCallback(() => {
+		ownerRef.current = undefined;
+		setActiveRegionId(undefined);
+	}, []);
+
 	const isActive = useCallback((regionId: string) => activeRegionId === regionId, [activeRegionId]);
 
-	const value = useMemo<FocusContextValue>(() => ({ activeRegionId, requestFocus, releaseFocus, isActive }), [activeRegionId, requestFocus, releaseFocus, isActive]);
+	const value = useMemo<FocusContextValue>(() => ({ activeRegionId, requestFocus, releaseFocus, isActive, clearFocus }), [activeRegionId, requestFocus, releaseFocus, isActive, clearFocus]);
 
 	return (
 		<FocusContext.Provider value={value}>
@@ -52,5 +58,6 @@ export function useFocusRegion(regionId: string, enabled: boolean): void {
 
 export function useGlobalHotkeysEnabled(): boolean {
 	const { activeRegionId } = useFocusContext();
+	// Disable global hotkeys when any page region has focus; allow when no focus
 	return !activeRegionId;
 } 

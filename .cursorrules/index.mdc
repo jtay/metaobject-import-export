@@ -3,6 +3,18 @@ alwaysApply: true
 ---
 # Cursor Rules Index
 
+- architecture.mdc
+- ui.mdc
+- navigation.mdc
 - pages.mdc
 - focus.mdc
 - keybindings.mdc
+- environments.mdc
+- import.mdc
+- export.mdc
+- shopify.mdc
+- schema.mdc
+- outputs.mdc
+- paths.mdc
+- lint.mdc
+- code-style.mdc

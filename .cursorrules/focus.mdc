@@ -1,10 +1,14 @@
 ---
-description: apply when a component or piece of interface needs to use or release focus
-alwaysApply: false
+alwaysApply: true
 ---
-# Focus Rules
+# Focus
 
-- Use `FocusProvider` at the app root.
+- Mount `FocusProvider` once at the app root.
+- Use `useFocusRegion(id, enabled)` for interactive widgets and pages to request focus.
+- Use `FocusTextInput` for text inputs so they participate in focus and disable global hotkeys.
+- Global hotkeys are disabled whenever any focus region is active; only page-local handlers should fire.
+- Call `useFocusContext().clearFocus()` or press Esc/Ctrl+G at layout level to return focus to navbar.
+
 - Use `useFocusRegion(id, enabled)` to claim focus when interactive widgets are active.
 - Use `FocusTextInput` wrapper for text inputs to auto-disable global hotkeys while focused.
 - Global hotkeys are disabled when any focus region is active.

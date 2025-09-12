@@ -8,13 +8,13 @@ export function EnvSetup() {
 	const { availableEnvs, selectEnv } = useEnvironment();
 	const [mode, setMode] = useState<'select' | 'create'>('select');
 
-	type Item = { label: string; value: { type: 'env'; env: EnvironmentFile } | { type: 'create' } };
+	type Item = { label: string; value: { type: 'env'; env: EnvironmentFile } | { type: 'create' }; key?: string };
 
 	const items: Item[] = useMemo(() => {
-		const base = availableEnvs.map(env => ({ label: env.name, value: { type: 'env', env } as const }));
+		const base = availableEnvs.map(env => ({ label: env.name, value: { type: 'env', env } as const, key: env.path }));
 		return [
 			...base,
-			{ label: '+ Create new environment', value: { type: 'create' } }
+			{ label: '+ Create new environment', value: { type: 'create' }, key: 'create' }
 		];
 	}, [availableEnvs]);
 

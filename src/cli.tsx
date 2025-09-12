@@ -6,6 +6,8 @@ import { pages } from '@ui/navConfig';
 import { FocusProvider } from '@context/FocusContext';
 import { useEnvironment } from '@context/EnvironmentContext';
 import { EnvSetup } from '@ui/setup/EnvSetup';
+import { NavigationProvider } from '@context/NavigationContext';
+import { ImportProvider } from '@context/ImportContext';
 
 function Root() {
 	const { selectedEnv } = useEnvironment();
@@ -19,7 +21,11 @@ function main(): void {
 	render(
 		<EnvironmentProvider>
 			<FocusProvider>
-				<Root />
+				<NavigationProvider>
+					<ImportProvider>
+						<Root />
+					</ImportProvider>
+				</NavigationProvider>
 			</FocusProvider>
 		</EnvironmentProvider>
 	);

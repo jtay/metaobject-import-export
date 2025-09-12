@@ -1,0 +1,17 @@
+# Export
+
+- Input:
+  - Metaobject `types: string[]`
+  - `retainIds: boolean` controls whether to keep raw IDs or convert references to handle refs.
+- Flow (`runExport`):
+  1) For each type, fetch all metaobjects (paginated) using GraphQL.
+  2) For each node, build an entry `{ handle, type: normalised, fields }`.
+  3) If `retainIds` is false, convert references to `handle://shopify/...` via `extractHandleRefsFromFields` and record dependencies.
+  4) Topologically sort entries based on handle-dependencies to order writes.
+  5) Write JSON to `outputs/` with filename `<env>-<types joined by +>-<timestamp>.json`.
+- Output JSON includes: `{ environment, count, entries }`.
+- Progress phases: `fetch` then `write`; include `currentType`, `count`, and `total` where relevant.
+description:
+globs:
+alwaysApply: false
+---

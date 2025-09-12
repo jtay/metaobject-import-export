@@ -1,0 +1,13 @@
+# Environments
+
+- `.env*` files are discovered in the project root at startup (`listEnvFiles`).
+- Selecting an environment loads it via `dotenv.config({ path })` and locks selection for the session.
+- To create a new environment, use the UI flow in `NewEnvForm` which reads keys from `example.env` and writes `.env.<name>`.
+- Required variables for Shopify client:
+  - `SHOPIFY_STORE_DOMAIN`
+  - `SHOPIFY_ADMIN_API_TOKEN` (or `SHOPIFY_ADMIN_API_ACCESS_TOKEN`)
+- Do not mutate environment variables outside of context initialization.
+description:
+globs:
+alwaysApply: false
+---
