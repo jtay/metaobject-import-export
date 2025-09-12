@@ -11,7 +11,6 @@ export type EnvironmentContextValue = {
 	availableEnvs: EnvironmentFile[];
 	selectedEnv?: EnvironmentFile;
 	selectEnv: (env: EnvironmentFile) => void;
-	locked: boolean;
 };
 
 const EnvironmentContext = createContext<EnvironmentContextValue | undefined>(undefined);
@@ -19,7 +18,6 @@ const EnvironmentContext = createContext<EnvironmentContextValue | undefined>(un
 export function EnvironmentProvider({ children }: { children: React.ReactNode }) {
 	const [availableEnvs, setAvailableEnvs] = useState<EnvironmentFile[]>([]);
 	const [selectedEnv, setSelectedEnv] = useState<EnvironmentFile | undefined>(undefined);
-	const [locked, setLocked] = useState<boolean>(false);
 
 	useEffect(() => {
 		const cwd = process.cwd();
@@ -29,7 +27,7 @@ export function EnvironmentProvider({ children }: { children: React.ReactNode })
 
 	useEffect(() => {
 		if (!selectedEnv) return;
-		const envConfig = dotenv.config({ path: selectedEnv.path });
+		const envConfig = dotenv.config({ path: selectedEnv.path, override: true });
 		if (envConfig.error) {
 			// eslint-disable-next-line no-console
 			console.error(`Failed to load env from ${selectedEnv.path}:`, envConfig.error);
@@ -37,17 +35,16 @@ export function EnvironmentProvider({ children }: { children: React.ReactNode })
 	}, [selectedEnv]);
 
 	const selectEnv = (env: EnvironmentFile) => {
-		if (locked) return; // ignore attempts after lock
 		setSelectedEnv(env);
-		setLocked(true);
+		// Immediately apply env override so new clients use the latest
+		dotenv.config({ path: env.path, override: true });
 	};
 
 	const value = useMemo<EnvironmentContextValue>(() => ({
 		availableEnvs,
 		selectedEnv,
-		selectEnv,
-		locked
-	}), [availableEnvs, selectedEnv, locked]);
+		selectEnv
+	}), [availableEnvs, selectedEnv]);
 
 	return (
 		<EnvironmentContext.Provider value={value}>

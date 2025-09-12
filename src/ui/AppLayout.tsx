@@ -139,7 +139,7 @@ export function AppLayout({ pages: pagesProp, initialKey, onNavigate }: AppLayou
 				<ActiveComponent />
 			</Box>
 			<Box marginTop={0}>
-				<Text dimColor>Focus: {navFocused ? 'navbar' : activeRegionId ? `page (${activeRegionId})` : 'navbar'} • Esc to navigate • Cmd+[h/i/e] jump</Text>
+				<Text dimColor>Focus: {navFocused ? 'navbar' : activeRegionId ? `page (${activeRegionId})` : 'navbar'} • Esc to navigate • Cmd+[h/i/e/n] jump</Text>
 			</Box>
 		</Box>
 	);
