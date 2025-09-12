@@ -2,6 +2,7 @@ export type ExportEntry = {
 	handle: string;
 	type: string;
 	fields: Record<string, unknown>;
+	backReferences?: Array<BackReference>;
 };
 
 export type ExportFile = {
@@ -13,6 +14,13 @@ export type ExportFile = {
 export type ExportStats = {
 	total: number;
 	byType: Record<string, number>;
+};
+
+export type BackReference = {
+	ownerType: 'Product' | 'ProductVariant' | 'Collection' | 'Page';
+	owner: string; // gid://... or handle://...
+	namespace: string;
+	key: string;
 };
 
 export function normaliseMetaobjectType(type: string): string {
@@ -27,7 +35,13 @@ export function parseExportFile(text: string): { file: ExportFile; stats: Export
 	const entries: ExportEntry[] = Array.isArray(raw?.entries) ? raw.entries.map((e: any) => ({
 		handle: String(e?.handle ?? ''),
 		type: normaliseMetaobjectType(String(e?.type ?? 'unknown')),
-		fields: typeof e?.fields === 'object' && e?.fields !== null ? e.fields : {}
+		fields: typeof e?.fields === 'object' && e?.fields !== null ? e.fields : {},
+		backReferences: Array.isArray(e?.backReferences) ? e.backReferences.map((br: any) => ({
+			ownerType: br?.ownerType,
+			owner: String(br?.owner ?? ''),
+			namespace: String(br?.namespace ?? ''),
+			key: String(br?.key ?? '')
+		})).filter((br: any) => br.owner && br.namespace && br.key) : undefined
 	})) : [];
 	const file: ExportFile = {
 		environment: typeof raw?.environment === 'string' ? raw.environment : undefined,

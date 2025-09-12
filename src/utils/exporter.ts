@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { ShopifyGraphQLClient } from '@utils/shopify/client';
-import { fetchAllMetaobjects, extractHandleRefsFromFields, isGid, type MetaobjectNode } from '@utils/shopify/metaobjects';
+import { fetchAllMetaobjects, extractHandleRefsFromFields, isGid, type MetaobjectNode, fetchBackReferences } from '@utils/shopify/metaobjects';
 import type { ExportFile, ExportEntry } from '@utils/schema';
 import { normaliseMetaobjectType } from '@utils/schema';
 
@@ -18,6 +18,7 @@ export type ExportOptions = {
 	environmentFileName: string; // e.g. .env.development
 	types: string[];
 	retainIds: boolean;
+	includeBackReferences?: boolean;
 	onProgress?: (p: ExportProgress) => void;
 };
 
@@ -43,6 +44,12 @@ export async function runExport(client: ShopifyGraphQLClient, opts: ExportOption
 				(entry.fields as any)[f.key] = value;
 			}
 			if (deps.size > 0) dependsOnMap.set(key, deps);
+
+			if (opts.includeBackReferences) {
+				const backRefs = await fetchBackReferences(client, node.id);
+				if (backRefs.length > 0) entry.backReferences = backRefs;
+			}
+
 			allEntries.push(entry);
 		}
 	}

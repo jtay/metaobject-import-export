@@ -18,16 +18,17 @@ export function Export() {
 	const [types, setTypes] = useState<string[]>([]);
 	const [newType, setNewType] = useState<string>('');
 	const [retainIds, setRetainIds] = useState<boolean>(true);
+	const [includeBackRefs, setIncludeBackRefs] = useState<boolean>(false);
 	const [running, setRunning] = useState<boolean>(false);
 	const [resultPath, setResultPath] = useState<string | undefined>(undefined);
 	const [error, setError] = useState<string | undefined>(undefined);
-	const [focusIndex, setFocusIndex] = useState<number>(0); // 0: input, 1: list, 2: checkbox, 3: run
+	const [focusIndex, setFocusIndex] = useState<number>(0); // 0: input, 1: list, 2: retainIds, 3: includeBackRefs, 4: run
 	const [listIndex, setListIndex] = useState<number>(0);
 	const [progress, setProgress] = useState<ExportProgress | undefined>(undefined);
 	const [step, setStep] = useState<number>(1); // 1=Form, 2=Run
 
 	const hasList = types.length > 0;
-	const maxFocus = hasList ? 3 : 2;
+	const maxFocus = hasList ? 4 : 3;
 
 	const canRun = types.length > 0 && !running;
 
@@ -77,6 +78,9 @@ export function Export() {
 				if (key.return || input === ' ') { setRetainIds(v => !v); return; }
 			}
 			if (focusIndex === 3) {
+				if (key.return || input === ' ') { setIncludeBackRefs(v => !v); return; }
+			}
+			if (focusIndex === 4) {
 				if ((key.return || input?.toLowerCase() === 'r') && canRun) { void run(); return; }
 			}
 			if ((key.return || input?.toLowerCase() === 'r') && canRun && focusIndex === maxFocus) { void run(); return; }
@@ -99,6 +103,7 @@ export function Export() {
 				environmentFileName: selectedEnv?.name ?? 'unknown',
 				types,
 				retainIds,
+				includeBackReferences: includeBackRefs,
 				onProgress: setProgress
 			});
 			setResultPath(outPath);
@@ -122,7 +127,7 @@ export function Export() {
 					<Box>
 						<Text color={focusIndex === 0 ? 'yellow' : 'gray'}>Add type:</Text>
 						<Box marginLeft={1}>
-							<FocusTextInput focus={focusIndex === 0} value={newType} onChange={setNewType} placeholder="article author banner" />
+							<FocusTextInput focus={focusIndex === 0} value={newType} onChange={setNewType} placeholder="Supports $app: prefix" />
 						</Box>
 					</Box>
 					{types.length > 0 ? (
@@ -146,10 +151,14 @@ export function Export() {
 				</Box>
 
 				<Box marginTop={1}>
+					<CheckboxRow label="Include metaobject entry parent references" checked={includeBackRefs} focused={focusIndex === 3} />
+				</Box>
+
+				<Box marginTop={1}>
 					<Text dimColor>{canRun ? 'Enter to run • Tab/Shift+Tab to move • Esc to go back' : 'Add at least one type'}</Text>
 				</Box>
 				<Box marginTop={1}>
-					<ButtonRow label="Run export" focused={focusIndex === 3} />
+					<ButtonRow label="Run export" focused={focusIndex === 4} />
 				</Box>
 				{error ? (
 					<Box marginTop={1}><Text color="red">{error}</Text></Box>
