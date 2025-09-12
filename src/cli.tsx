@@ -1,18 +1,26 @@
 import React from 'react';
 import { render } from 'ink';
-import { EnvironmentProvider, useEnvironment } from '@context/EnvironmentContext';
-import { EnvSelector } from '@ui/EnvSelector';
-import { Home } from '@ui/Home';
+import { EnvironmentProvider } from '@context/EnvironmentContext';
+import { AppLayout } from '@ui/AppLayout';
+import { pages } from '@ui/navConfig';
+import { FocusProvider } from '@context/FocusContext';
+import { useEnvironment } from '@context/EnvironmentContext';
+import { EnvSetup } from '@ui/setup/EnvSetup';
 
 function Root() {
 	const { selectedEnv } = useEnvironment();
-	return selectedEnv ? <Home /> : <EnvSelector />;
+	if (!selectedEnv) {
+		return <EnvSetup />;
+	}
+	return <AppLayout pages={pages} />;
 }
 
 function main(): void {
 	render(
 		<EnvironmentProvider>
-			<Root />
+			<FocusProvider>
+				<Root />
+			</FocusProvider>
 		</EnvironmentProvider>
 	);
 }

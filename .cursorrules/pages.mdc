@@ -1,0 +1,9 @@
+---
+description: adding, updating or managing pages
+alwaysApply: false
+---
+# Pages Rules
+
+- Define page components in `src/ui/navConfig.tsx`.
+- Each page has: key, title, optional hotkey, and component.
+- Keep page components side-effect free; mount side-effects in child hooks.

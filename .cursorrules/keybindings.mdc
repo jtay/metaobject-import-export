@@ -1,0 +1,10 @@
+---
+description: handling any kind of key presses or key bindings
+alwaysApply: false
+---
+# Keybindings Rules
+
+- Global navigation: Tab cycles pages.
+- Letter hotkeys: single alphanumerics map to pages when no modifiers pressed.
+- Reserved: arrows, Shift+*, Ctrl/Cmd/Alt combos for future features.
+- Do not bind global hotkeys inside focused regions.

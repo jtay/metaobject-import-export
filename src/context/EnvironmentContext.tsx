@@ -11,6 +11,7 @@ export type EnvironmentContextValue = {
 	availableEnvs: EnvironmentFile[];
 	selectedEnv?: EnvironmentFile;
 	selectEnv: (env: EnvironmentFile) => void;
+	locked: boolean;
 };
 
 const EnvironmentContext = createContext<EnvironmentContextValue | undefined>(undefined);
@@ -18,6 +19,7 @@ const EnvironmentContext = createContext<EnvironmentContextValue | undefined>(un
 export function EnvironmentProvider({ children }: { children: React.ReactNode }) {
 	const [availableEnvs, setAvailableEnvs] = useState<EnvironmentFile[]>([]);
 	const [selectedEnv, setSelectedEnv] = useState<EnvironmentFile | undefined>(undefined);
+	const [locked, setLocked] = useState<boolean>(false);
 
 	useEffect(() => {
 		const cwd = process.cwd();
@@ -34,11 +36,18 @@ export function EnvironmentProvider({ children }: { children: React.ReactNode })
 		}
 	}, [selectedEnv]);
 
+	const selectEnv = (env: EnvironmentFile) => {
+		if (locked) return; // ignore attempts after lock
+		setSelectedEnv(env);
+		setLocked(true);
+	};
+
 	const value = useMemo<EnvironmentContextValue>(() => ({
 		availableEnvs,
 		selectedEnv,
-		selectEnv: setSelectedEnv
-	}), [availableEnvs, selectedEnv]);
+		selectEnv,
+		locked
+	}), [availableEnvs, selectedEnv, locked]);
 
 	return (
 		<EnvironmentContext.Provider value={value}>
