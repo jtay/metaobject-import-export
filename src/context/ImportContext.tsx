@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useMemo, useState } from 'react';
+import React, { createContext, useContext, useMemo, useState, useCallback } from 'react';
 import fs from 'node:fs';
 import type { OutputFile } from '@utils/outputs';
 import { parseExportFile, type ExportFile as ExportSchema, type ExportStats } from '@utils/schema';
@@ -36,12 +36,12 @@ export function ImportProvider({ children }: { children: React.ReactNode }) {
 				const parsed = parseExportFile(text);
 				setParsedFile(parsed.file);
 				setStats(parsed.stats);
-			} catch (e) {
+			} catch {
 				setParsedFile(undefined);
 				setStats(undefined);
 			}
-		} catch (e) {
-			setContentText(`Failed to read file: ${String(e)}`);
+		} catch (err) {
+			setContentText(`Failed to read file: ${String(err)}`);
 			setParsedFile(undefined);
 			setStats(undefined);
 		}
@@ -56,7 +56,7 @@ export function ImportProvider({ children }: { children: React.ReactNode }) {
 		setProgress(undefined);
 	};
 
-	const confirmImport = () => {
+	const confirmImport = useCallback(() => {
 		if (!parsedFile || isRunning) return;
 		setIsRunning(true);
 		setProgress({ index: 0, total: parsedFile.count, message: 'Starting…' });
@@ -70,9 +70,9 @@ export function ImportProvider({ children }: { children: React.ReactNode }) {
 			setIsRunning(false);
 			setProgress(prev => ({ index: prev?.index ?? 0, total: prev?.total ?? parsedFile.count, message: String(e) }));
 		});
-	};
+	}, [parsedFile, isRunning]);
 
-	const value = useMemo<ImportContextValue>(() => ({ selected, contentText, parsedFile, stats, isRunning, progress, selectFile, clear, confirmImport }), [selected, contentText, parsedFile, stats, isRunning, progress]);
+	const value = useMemo<ImportContextValue>(() => ({ selected, contentText, parsedFile, stats, isRunning, progress, selectFile, clear, confirmImport }), [selected, contentText, parsedFile, stats, isRunning, progress, confirmImport]);
 
 	return (
 		<ImportContext.Provider value={value}>

@@ -41,7 +41,7 @@ export async function runExport(client: ShopifyGraphQLClient, opts: ExportOption
 			const deps = new Set<string>();
 			for (const f of node.fields) {
 				const value = normaliseFieldForExport(node, f, opts.retainIds, deps);
-				(entry.fields as any)[f.key] = value;
+				(entry.fields as Record<string, unknown>)[f.key] = value;
 			}
 			if (deps.size > 0) dependsOnMap.set(key, deps);
 

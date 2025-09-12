@@ -38,8 +38,8 @@ export async function runImport(client: ShopifyGraphQLClient, file: ExportFile, 
 	// Post-pass: apply back references if present
 	const pending: Array<{ ownerRef: string; namespace: string; key: string; metaobjectKey: string }> = [];
 	for (const e of entries) {
-		if (!Array.isArray((e as any).backReferences)) continue;
-		for (const br of (e as any).backReferences as Array<{ ownerType: string; owner: string; namespace: string; key: string }>) {
+		const brs = e.backReferences ?? [];
+		for (const br of brs) {
 			pending.push({ ownerRef: br.owner, namespace: br.namespace, key: br.key, metaobjectKey: `${e.type}/${e.handle}` });
 		}
 	}
@@ -51,7 +51,7 @@ export async function runImport(client: ShopifyGraphQLClient, file: ExportFile, 
 	type GroupKey = string; // `${ownerId}:${namespace}:${key}` but owner might be a handle ref initially
 	const groups = new Map<GroupKey, { ownerId?: string; ownerRef: string; namespace: string; key: string; metaobjectIds: string[] }>();
 	for (const p of pending) {
-		let ownerId: string | null = p.ownerRef.startsWith('handle://shopify/') ? await resolver.resolve(p.ownerRef) : (p.ownerRef.startsWith('gid://shopify/') ? p.ownerRef : null);
+		const ownerId: string | null = p.ownerRef.startsWith('handle://shopify/') ? await resolver.resolve(p.ownerRef) : (p.ownerRef.startsWith('gid://shopify/') ? p.ownerRef : null);
 		if (!ownerId) continue; // skip missing owners
 		const metaobjectId = createdIdsByHandleKey.get(p.metaobjectKey);
 		if (!metaobjectId) continue; // metaobject not created? skip
@@ -97,8 +97,9 @@ async function transformValue(val: unknown, resolver: HandleResolver): Promise<u
 		return mapped;
 	}
 	if (val && typeof val === 'object') {
+		const inputObj = val as Record<string, unknown>;
 		const obj: Record<string, unknown> = {};
-		for (const [k, v] of Object.entries(val as any)) obj[k] = await transformValue(v, resolver);
+		for (const [k, v] of Object.entries(inputObj)) obj[k] = await transformValue(v, resolver);
 		return obj;
 	}
 	return val;

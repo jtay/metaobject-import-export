@@ -60,7 +60,7 @@ export async function fetchAllMetaobjects(client: ShopifyGraphQLClient, type: st
 	const first = 250;
 	let after: string | undefined = undefined;
 	let all: MetaobjectNode[] = [];
-	// eslint-disable-next-line no-constant-condition
+	 
 	while (true) {
 		const res: GraphQLResponse<{ metaobjects: { pageInfo: { hasNextPage: boolean; endCursor?: string }; nodes: MetaobjectNode[] } }> = await client.request(QUERY_METAOBJECTS, { type, first, after });
 		const page = res.data?.metaobjects;
@@ -161,15 +161,25 @@ const QUERY_METAOBJECT_REFERENCED_BY = `query MetaobjectReferencedBy($id: ID!, $
   }
 }`;
 
-export type BackRefEdge = { node: { namespace: string; key: string; referencer: { __typename: string; id: string; handle?: string; sku?: string; product?: { handle?: string } } } };
+export type BackRefEdge = { node: { namespace: string; key: string; referencer: BackRefReferencer } };
 
 export type BackReference = { ownerType: 'Product' | 'ProductVariant' | 'Collection' | 'Page'; owner: string; namespace: string; key: string };
+
+type ProductRef = { __typename: 'Product'; id: string; handle?: string };
+
+type PageRef = { __typename: 'Page'; id: string; handle?: string };
+
+type CollectionRef = { __typename: 'Collection'; id: string; handle?: string };
+
+type ProductVariantRef = { __typename: 'ProductVariant'; id: string; sku?: string; product?: { handle?: string } };
+
+type BackRefReferencer = ProductRef | PageRef | CollectionRef | ProductVariantRef;
 
 export async function fetchBackReferences(client: ShopifyGraphQLClient, id: string): Promise<BackReference[]> {
 	const first = 250;
 	let after: string | undefined = undefined;
 	const results: BackReference[] = [];
-	// eslint-disable-next-line no-constant-condition
+	 
 	while (true) {
 		const res: GraphQLResponse<{ metaobject: { referencedBy: { pageInfo: { hasNextPage: boolean; endCursor?: string }; edges: BackRefEdge[] } } | null }> = await client.request(QUERY_METAOBJECT_REFERENCED_BY, { id, first, after });
 		const rb = res.data?.metaobject?.referencedBy as { pageInfo: { hasNextPage: boolean; endCursor?: string }; edges: BackRefEdge[] } | undefined;
@@ -178,12 +188,9 @@ export async function fetchBackReferences(client: ShopifyGraphQLClient, id: stri
 			const r = e.node.referencer;
 			if (!r) continue;
 			if (r.__typename === 'Product' || r.__typename === 'ProductVariant' || r.__typename === 'Collection' || r.__typename === 'Page') {
-				let owner: string | undefined;
-				if (r.__typename === 'Product' || r.__typename === 'Page' || r.__typename === 'Collection' || r.__typename === 'ProductVariant') {
-					const ref = toHandleRef({ __typename: r.__typename, id: r.id, handle: (r as any).handle, sku: (r as any).sku, product: (r as any).product });
-					owner = ref ?? r.id;
-				}
-				if (owner) results.push({ ownerType: r.__typename as any, owner, namespace: e.node.namespace, key: e.node.key });
+				const ref = toHandleRef(r);
+				const owner = ref ?? r.id;
+				results.push({ ownerType: r.__typename, owner, namespace: e.node.namespace, key: e.node.key });
 			}
 		}
 		if (!rb.pageInfo.hasNextPage) break;

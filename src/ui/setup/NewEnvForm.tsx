@@ -25,7 +25,7 @@ export function NewEnvForm({ onCreated, onCancel }: { onCreated: (env: Environme
 				.filter(Boolean);
 			setKeys(parsedKeys);
 			setValues(parsedKeys.reduce<Record<string, string>>((acc, k) => { acc[k] = ''; return acc; }, {}));
-		} catch (e) {
+		} catch {
 			setKeys([]);
 		}
 	}, [examplePath]);

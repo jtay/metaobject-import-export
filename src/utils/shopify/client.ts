@@ -30,7 +30,7 @@ export class ShopifyGraphQLClient {
 
 	async request<T>(query: string, variables?: Record<string, unknown>): Promise<GraphQLResponse<T>> {
 		let attempt = 0;
-		// eslint-disable-next-line no-constant-condition
+		 
 		while (true) {
 			try {
 				const body = JSON.stringify({ query, variables });
@@ -41,7 +41,8 @@ export class ShopifyGraphQLClient {
 					throw new RetryableError(`HTTP ${status}`);
 				}
 				const json = JSON.parse(text) as GraphQLResponse<T>;
-				if ((json as any).errors?.some((e: any) => e?.extensions?.code === 'THROTTLED')) {
+				const throttled = Array.isArray(json.errors) && json.errors.some((e) => (e?.extensions as { code?: string } | undefined)?.code === 'THROTTLED');
+				if (throttled) {
 					throw new RetryableError('GraphQL throttled');
 				}
 				return json;

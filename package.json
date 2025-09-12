@@ -1,6 +1,6 @@
 {
   "name": "metaobject-import-export",
-  "version": "0.0.1",
+  "version": "0.1.0",
   "private": true,
   "type": "module",
   "description": "CLI TUI (Ink) for metaobject import/export",
@@ -36,6 +36,7 @@
     "eslint-import-resolver-typescript": "^4.4.4",
     "eslint-plugin-import": "^2.32.0",
     "eslint-plugin-react": "^7.37.5",
+    "eslint-plugin-react-hooks": "^5.2.0",
     "tsx": "^4.16.0",
     "typescript": "^5.4.0",
     "typescript-eslint": "^8.43.0"
