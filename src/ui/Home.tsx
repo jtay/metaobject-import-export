@@ -77,7 +77,7 @@ export function Home() {
 	return (
 		<Box flexDirection="column">
 			<Text color="green">Home</Text>
-			<Box marginTop={1}>
+			<Box marginTop={1} padding={1}>
 				<Panel title="Connection" borderColor={selectedEnv ? 'green' : 'yellow'}>
 					{selectedEnv ? (
 						<Box flexDirection="column">
@@ -95,7 +95,7 @@ export function Home() {
 					)}
 				</Panel>
 			</Box>
-			<Box marginTop={1}>
+			<Box marginTop={1} padding={1}>
 				<Panel title="Recent outputs">
 					{files.length === 0 ? (
 						<Text dimColor>No files in outputs</Text>

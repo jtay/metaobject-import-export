@@ -5,7 +5,7 @@ import { useEnvironment, EnvironmentFile } from '@context/EnvironmentContext';
 import { NewEnvForm } from '@ui/setup/NewEnvForm';
 
 export function EnvSetup() {
-	const { availableEnvs, selectEnv } = useEnvironment();
+	const { availableEnvs, selectEnv, refreshEnvs } = useEnvironment();
 	const [mode, setMode] = useState<'select' | 'create'>('select');
 
 	type Item = { label: string; value: { type: 'env'; env: EnvironmentFile } | { type: 'create' }; key?: string };
@@ -22,7 +22,7 @@ export function EnvSetup() {
 		return (
 			<Box flexDirection="column">
 				<Text color="cyan">Create new environment</Text>
-				<NewEnvForm onCreated={(env) => selectEnv(env)} onCancel={() => setMode('select')} />
+				<NewEnvForm onCreated={(env) => { refreshEnvs(); selectEnv(env); setMode('select'); }} onCancel={() => setMode('select')} />
 			</Box>
 		);
 	}

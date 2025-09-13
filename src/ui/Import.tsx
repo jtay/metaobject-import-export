@@ -11,11 +11,11 @@ import { Table, type Column } from '@ui/components/Table';
 
 export function Import() {
 	useFocusRegion('page:import', true);
-	const { selected, contentText, parsedFile, stats, confirmImport, isRunning, progress, selectFile, clear } = useImport();
+	const { selected, contentText, parsedFile, stats, confirmImport, importOne, isRunning, progress, selectFile, clear, processed, failed, skipOnError, toggleSkipOnError } = useImport();
 	const { navigate } = useNavigation();
 	const { availableEnvs } = useEnvironment();
 
-	// Steps: 1=Select, 2=Preview, 3=Run
+	// Steps: 1=Select, 2=Preview
 	const initialStep = selected ? 2 : 1;
 	const [step, setStep] = useState<number>(initialStep);
 
@@ -31,7 +31,7 @@ export function Import() {
 		setListIndex(0);
 	}, [envNames]);
 
-	// Step 2 state: preview
+	// Step 2 state: preview (3 columns)
 	const [viewMode, setViewMode] = useState<'table' | 'json'>('table');
 	const pretty = useMemo(() => {
 		if (!contentText) return '';
@@ -44,33 +44,44 @@ export function Import() {
 	}, [contentText]);
 	const lines = useMemo(() => pretty.split(/\r?\n/), [pretty]);
 	const { stdout } = useStdout();
+	const columns = stdout?.columns ?? 120;
+	const widthThird = Math.max(24, Math.floor(columns / 3));
 	const totalRows = stdout?.rows ?? 24;
 	const previewHeight = Math.max(5, totalRows - 12);
 	const [scroll, setScroll] = useState(0);
+	const [selectedRow, setSelectedRow] = useState(0);
 
+	const entries = parsedFile?.entries ?? [];
+	useEffect(() => { setSelectedRow(0); setScroll(0); }, [parsedFile]);
+
+	// Table with status column (invisible header)
 	const tableColumns: Column[] = useMemo(() => ([
-		{ label: 'Type', width: 28 },
-		{ label: 'Handle', width: 40 },
-		{ label: 'Fields', width: 32 }
+		{ label: '', width: 2 },
+		{ label: 'Type', width: 24 },
+		{ label: 'Handle', width: 32 },
 	]), []);
 	const tableRowsAll: string[][] = useMemo(() => {
-		const entries = parsedFile?.entries ?? [];
-		return entries.map(e => {
+		return entries.map((e, idx) => {
 			const keys = Object.keys(e.fields ?? {}).slice(0, 6).join(', ');
-			return [e.type ?? 'unknown', e.handle ?? '', keys];
+			const status = failed.has(idx) ? '✖' : (processed.has(idx) ? '✔' : '');
+			return [status, e.type ?? 'unknown', e.handle ?? ''];
 		});
-	}, [parsedFile]);
+	}, [entries, processed, failed]);
 	const tableSlice = tableRowsAll.slice(scroll, scroll + previewHeight);
 	const maxTableScroll = Math.max(0, tableRowsAll.length - previewHeight);
 	const maxJsonScroll = Math.max(0, lines.length - previewHeight);
+
+	// Keep selected row within viewport
+	useEffect(() => {
+		if (selectedRow < scroll) setScroll(selectedRow);
+		else if (selectedRow >= scroll + previewHeight) setScroll(selectedRow - previewHeight + 1);
+	}, [selectedRow, scroll, previewHeight]);
 
 	// Keyboard handling per step
 	useInput((input, key) => {
 		// Global back to Home
 		if (key.escape) {
 			if (step === 1) { navigate('home'); return; }
-			if (step === 2) { setStep(1); return; }
-			if (step === 3 && !isRunning) { setStep(1); clear(); return; }
 		}
 
 		if (step === 1) {
@@ -86,26 +97,31 @@ export function Import() {
 		if (step === 2) {
 			// Toggle view
 			if (input?.toLowerCase() === 'v') { setViewMode(m => m === 'table' ? 'json' : 'table'); return; }
+			// Toggle skip on error
+			if ((key.meta || key.ctrl) && input?.toLowerCase() === 's' && !isRunning) { toggleSkipOnError(); return; }
+			// Full import: Cmd+G (prefer meta to avoid ctrl+g clash with navbar)
+			if ((key.meta || key.ctrl) && input?.toLowerCase() === 'g' && !isRunning && parsedFile) { confirmImport(); return; }
+			// Back to file selection: Cmd/Ctrl+X
+			if ((key.meta || key.ctrl) && input?.toLowerCase() === 'x' && !isRunning) { setStep(1); return; }
 			if (viewMode === 'json') {
-				if (key.downArrow) setScroll(s => Math.min(s + 1, maxJsonScroll));
-				if (key.upArrow) setScroll(s => Math.max(0, s - 1));
-				if (key.pageDown) setScroll(s => Math.min(s + previewHeight, maxJsonScroll));
-				if (key.pageUp) setScroll(s => Math.max(0, s - previewHeight));
+				if (!isRunning && key.downArrow) setScroll(s => Math.min(s + 1, maxJsonScroll));
+				if (!isRunning && key.upArrow) setScroll(s => Math.max(0, s - 1));
+				if (!isRunning && key.pageDown) setScroll(s => Math.min(s + previewHeight, maxJsonScroll));
+				if (!isRunning && key.pageUp) setScroll(s => Math.max(0, s - previewHeight));
 			} else {
-				if (key.downArrow) setScroll(s => Math.min(s + 1, maxTableScroll));
-				if (key.upArrow) setScroll(s => Math.max(0, s - 1));
-				if (key.pageDown) setScroll(s => Math.min(s + previewHeight, maxTableScroll));
-				if (key.pageUp) setScroll(s => Math.max(0, s - previewHeight));
+				if (!isRunning && key.downArrow) setSelectedRow(i => Math.min(entries.length - 1, i + 1));
+				if (!isRunning && key.upArrow) setSelectedRow(i => Math.max(0, i - 1));
+				if (!isRunning && key.pageDown) setSelectedRow(i => Math.min(entries.length - 1, i + previewHeight));
+				if (!isRunning && key.pageUp) setSelectedRow(i => Math.max(0, i - previewHeight));
 			}
-			if (key.return && !isRunning && parsedFile) {
-				setStep(3);
-				confirmImport();
+			// Full import: Cmd/Ctrl+Enter (be lenient about Enter detection)
+			const isEnter = key.return || input === '\r' || input === '\n';
+			if (!isRunning && parsedFile && (key.meta || key.ctrl) && isEnter) { confirmImport(); return; }
+			// Single entry import: plain Enter
+			if (!isRunning && parsedFile && isEnter && !(key.meta || key.ctrl)) {
+				importOne(selectedRow);
 				return;
 			}
-		}
-
-		if (step === 3) {
-			// No-op; allow Escape handled above when not running
 		}
 	});
 
@@ -127,7 +143,7 @@ export function Import() {
 	if (step === 1) {
 		return (
 			<Box flexDirection="column">
-				<WizardHeader title="Import" step={1} total={3} />
+				<WizardHeader title="Import" step={1} total={2} />
 				<Panel title="Select a file to import">
 					{files.length === 0 ? (
 						<Text dimColor>No files in outputs</Text>
@@ -142,67 +158,78 @@ export function Import() {
 		);
 	}
 
-	if (step === 2) {
-		const header = selected ? `${selected.name} (${selected.type}) — ${new Date(selected.createdMs).toLocaleString()}` : 'No file selected';
-		return (
-			<Box flexDirection="row" justifyContent="space-between">
-				<Box width={36} flexDirection="column" marginRight={2}>
-					<WizardHeader title="Import" step={2} total={3} />
-					<Text>File: {header}</Text>
-					<Text>Environment: {parsedFile?.environment ?? selected?.environment ?? 'unknown'}</Text>
-					<Text>Entries: {stats?.total ?? parsedFile?.count ?? 'n/a'}</Text>
-					<Box marginTop={1} flexDirection="column">
-						<Text>By type:</Text>
-						{stats ? (
-							Object.entries(stats.byType).map(([t, c]) => (
-								<Text key={t}>{t}: {c}</Text>
-							))
-						) : (
-							<Text dimColor>Unavailable</Text>
-						)}
-					</Box>
-					<Box marginTop={1}>
-						<Text dimColor>Enter to run import • v toggle view • Esc to go back</Text>
-					</Box>
-				</Box>
-				<Box flexGrow={1} flexDirection="column">
-					{viewMode === 'table' ? (
-						<Panel title="Preview (Table)">
-							<Table columns={tableColumns} rows={tableSlice} />
-							<Text dimColor>Rows {Math.min(scroll + 1, tableRowsAll.length)}-{Math.min(scroll + previewHeight, tableRowsAll.length)} of {tableRowsAll.length}</Text>
-						</Panel>
+	// Step 2: 3-column responsive layout
+	const header = selected ? `${selected.name} (${selected.type}) — ${new Date(selected.createdMs).toLocaleString()}` : 'No file selected';
+	const selectedEntry = entries[selectedRow];
+	return (
+		<Box flexDirection="row" justifyContent="space-between">
+			<Box width={widthThird} flexDirection="column" marginRight={1}>
+				<WizardHeader title="Import" step={2} total={2} />
+				<Text>File: {header}</Text>
+				<Text>Environment: {parsedFile?.environment ?? selected?.environment ?? 'unknown'}</Text>
+				<Text>Entries: {stats?.total ?? parsedFile?.count ?? 'n/a'}</Text>
+				<Box marginTop={1} flexDirection="column">
+					<Text>By type:</Text>
+					{stats ? (
+						Object.entries(stats.byType).map(([t, c]) => (
+							<Text key={t}>{t}: {c}</Text>
+						))
 					) : (
-						<Panel title="Preview (JSON)">
+						<Text dimColor>Unavailable</Text>
+					)}
+				</Box>
+				<Box marginTop={1} flexDirection="column">
+					<Text>Hotkeys</Text>
+					<Text dimColor>Enter: import selected</Text>
+					<Text dimColor>Cmd/Ctrl+G: import all</Text>
+					<Text dimColor>v: toggle view</Text>
+					<Text dimColor>Cmd/Ctrl+S: skip on error: {skipOnError ? 'ON' : 'OFF'}</Text>
+					<Text dimColor>Cmd/Ctrl+X: back</Text>
+				</Box>
+			</Box>
+			<Box width={widthThird} flexDirection="column" marginX={1}>
+				<Panel title="Entries">
+					{viewMode === 'table' ? (
+						<>
+							<Table columns={tableColumns} rows={tableSlice} activeIndex={selectedRow - scroll} />
+							<Text dimColor>Rows {Math.min(scroll + 1, tableRowsAll.length)}-{Math.min(scroll + previewHeight, tableRowsAll.length)} of {tableRowsAll.length}</Text>
+						</>
+					) : (
+						<>
 							{lines.slice(scroll, scroll + previewHeight).map((l, i) => (
 								<Text key={i}>{l}</Text>
 							))}
 							<Text dimColor>
 								Lines {Math.min(scroll + 1, lines.length)}-{Math.min(scroll + previewHeight, lines.length)} of {lines.length}
 							</Text>
-						</Panel>
+						</>
 					)}
-				</Box>
+				</Panel>
 			</Box>
-		);
-	}
-
-	// Step 3: Run
-	const currentLabel = progress?.current ? `${progress.current.type}/${progress.current.handle}` : undefined;
-	return (
-		<Box flexDirection="row" justifyContent="space-between">
-			<Box width={36} flexDirection="column" marginRight={2}>
-				<WizardHeader title="Import" step={3} total={3} />
-				<Text>Entries: {parsedFile?.count ?? stats?.total ?? 'n/a'}</Text>
-				<Box marginTop={1}>
-					<Text dimColor>{isRunning ? `Importing… ${progress ? `${progress.index + 1}/${progress.total}` : ''}${currentLabel ? ` • ${currentLabel}` : ''}` : 'Done. Esc to select another or Cmd+h for Home'}</Text>
-				</Box>
-				{progress?.message ? (
-					<Box marginTop={1}><Text dimColor>{progress.message}</Text></Box>
-				) : null}
-			</Box>
-			<Box flexGrow={1} flexDirection="column">
-				<Panel title="Progress">
-					{progress?.message ? <Text dimColor>{progress.message}</Text> : <Text dimColor>Starting…</Text>}
+			<Box width={widthThird} flexDirection="column" marginLeft={1}>
+				<Panel title="Preview">
+					{selectedEntry ? (
+						<>
+							<Text>{selectedEntry.type}/{selectedEntry.handle}</Text>
+							<Box marginTop={1} flexDirection="column">
+								<Text dimColor>Ready. Enter to import this entry.</Text>
+								{failed.has(selectedRow) ? <Text color="red">Last error: {failed.get(selectedRow)}</Text> : null}
+							</Box>
+						</>
+					) : (
+						<Text dimColor>No entry selected</Text>
+					)}
+				</Panel>
+				<Panel title="Current import status" >
+					{progress?.current ? (
+						<Box flexDirection="column">
+							<Text dimColor>Processing: {progress.current.type}/{progress.current.handle}</Text>
+							{progress.message ? <Text dimColor>{progress.message}</Text> : null}
+							{progress.error ? <Text color="red">{progress.error}</Text> : null}
+						</Box>
+					) : (
+						<Text dimColor>Idle</Text>
+					)}
 				</Panel>
 			</Box>
 		</Box>

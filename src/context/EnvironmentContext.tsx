@@ -11,6 +11,7 @@ export type EnvironmentContextValue = {
 	availableEnvs: EnvironmentFile[];
 	selectedEnv?: EnvironmentFile;
 	selectEnv: (env: EnvironmentFile) => void;
+	refreshEnvs: () => void;
 };
 
 const EnvironmentContext = createContext<EnvironmentContextValue | undefined>(undefined);
@@ -19,10 +20,14 @@ export function EnvironmentProvider({ children }: { children: React.ReactNode })
 	const [availableEnvs, setAvailableEnvs] = useState<EnvironmentFile[]>([]);
 	const [selectedEnv, setSelectedEnv] = useState<EnvironmentFile | undefined>(undefined);
 
-	useEffect(() => {
+	const refreshEnvs = () => {
 		const cwd = process.cwd();
 		const envs = listEnvFiles(cwd);
 		setAvailableEnvs(envs);
+	};
+
+	useEffect(() => {
+		refreshEnvs();
 	}, []);
 
 	useEffect(() => {
@@ -43,7 +48,8 @@ export function EnvironmentProvider({ children }: { children: React.ReactNode })
 	const value = useMemo<EnvironmentContextValue>(() => ({
 		availableEnvs,
 		selectedEnv,
-		selectEnv
+		selectEnv,
+		refreshEnvs
 	}), [availableEnvs, selectedEnv]);
 
 	return (

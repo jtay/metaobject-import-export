@@ -1,4 +1,5 @@
 import { ShopifyGraphQLClient } from '@utils/shopify/client';
+import { normaliseMetaobjectType } from '@utils/schema';
 
 const Q_METAOBJECT_ID = `query MetaobjectIdByHandle($type: String!, $handle: String!) { metaobjectByHandle(handle: { type: $type, handle: $handle }) { id } }`;
 const Q_PRODUCT_ID = `query ProductIdByHandle($handle: String!) { productByHandle(handle: $handle) { id handle } }`;
@@ -30,7 +31,7 @@ export class HandleResolver {
 		const parts = ref.replace('handle://shopify/', '').split('/');
 		const kind = parts[0];
 		if (kind === 'Metaobject') {
-			const type = parts[1];
+			const type = normaliseMetaobjectType(parts[1]);
 			const handle = parts.slice(2).join('/');
 			const res = await this.client.request<{ metaobjectByHandle: { id: string } | null }>(Q_METAOBJECT_ID, { type, handle });
 			return res.data?.metaobjectByHandle?.id ?? null;

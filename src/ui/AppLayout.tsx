@@ -56,13 +56,6 @@ export function AppLayout({ pages: pagesProp, initialKey, onNavigate }: AppLayou
 			return;
 		}
 
-		// Ctrl+G also returns focus to navbar
-		if (key.ctrl && input?.toLowerCase() === 'g') {
-			setNavFocused(true);
-			clearFocus();
-			return;
-		}
-
 		if (navFocused) {
 			if (key.leftArrow) {
 				setNavHoverIndex((i) => (i - 1 + availablePages.length) % availablePages.length);
