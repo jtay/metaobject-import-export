@@ -30,12 +30,11 @@ export function normaliseMetaobjectType(type: string): string {
 	return replaced;
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-	return typeof value === 'object' && value !== null;
-}
-
-function isOwnerType(value: unknown): value is BackReference['ownerType'] {
-	return value === 'Product' || value === 'ProductVariant' || value === 'Collection' || value === 'Page';
+export function normaliseAppNamespace(ns: string): string {
+	const regex = /^app--\d+--(.+)$/;
+	// Convert to $app:namespace
+	const replaced = ns.replace(regex, '$$app:$1');
+	return replaced;
 }
 
 export function parseExportFile(text: string): { file: ExportFile; stats: ExportStats } {
@@ -58,7 +57,7 @@ export function parseExportFile(text: string): { file: ExportFile; stats: Export
 			return {
 				ownerType,
 				owner: String(br.owner ?? ''),
-				namespace: String(br.namespace ?? ''),
+				namespace: normaliseAppNamespace(String(br.namespace ?? '')),
 				key: String(br.key ?? '')
 			};
 		}).filter((br) => br.owner && br.namespace && br.key) : undefined;
@@ -70,7 +69,6 @@ export function parseExportFile(text: string): { file: ExportFile; stats: Export
 			backReferences
 		};
 	});
-
 	const environment = typeof (raw as Record<string, unknown>).environment === 'string' ? String((raw as Record<string, unknown>).environment) : undefined;
 	const countRaw = (raw as Record<string, unknown>).count as unknown;
 	const countParsed = typeof countRaw === 'number' ? countRaw : Number.isFinite(Number(countRaw)) ? Number(countRaw) : undefined;
@@ -89,4 +87,12 @@ export function parseExportFile(text: string): { file: ExportFile; stats: Export
 		}, {})
 	};
 	return { file, stats };
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+	return typeof value === 'object' && value !== null;
+}
+
+function isOwnerType(value: unknown): value is BackReference['ownerType'] {
+	return value === 'Product' || value === 'ProductVariant' || value === 'Collection' || value === 'Page';
 } 

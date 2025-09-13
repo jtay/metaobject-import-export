@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { ShopifyGraphQLClient } from '@utils/shopify/client';
-import { fetchAllMetaobjects, extractHandleRefsFromFields, isGid, type MetaobjectNode, fetchBackReferences } from '@utils/shopify/metaobjects';
+import { fetchAllMetaobjects, extractHandleRefsFromFields, isGid, type MetaobjectNode, fetchBackReferencesFrom, extractInitialBackReferencesFromNode } from '@utils/shopify/metaobjects';
 import type { ExportFile, ExportEntry } from '@utils/schema';
 import { normaliseMetaobjectType } from '@utils/schema';
 
@@ -11,6 +11,9 @@ export type ExportProgress = {
 	count?: number;
 	total?: number;
 	currentType?: string;
+	backRefCount?: number;
+	doneType?: boolean;
+	error?: string;
 };
 
 export type ExportOptions = {
@@ -27,31 +30,55 @@ export async function runExport(client: ShopifyGraphQLClient, opts: ExportOption
 	const dependsOnMap = new Map<string, Set<string>>(); // key:type/handle -> set of handle refs
 
 	for (const type of opts.types) {
-		opts.onProgress?.({ phase: 'fetch', message: `Fetching ${type}…`, currentType: type });
-		const nodes = await fetchAllMetaobjects(client, type);
-		opts.onProgress?.({ phase: 'fetch', message: `Fetched ${nodes.length} of ${type}`, currentType: type, count: nodes.length });
-		for (const node of nodes) {
-			const key = `${node.type}/${node.handle}`;
-			const entry: ExportEntry = {
-				handle: node.handle,
-				type: normaliseMetaobjectType(node.type),
-				fields: {} as Record<string, unknown>
-			};
-
-			const deps = new Set<string>();
-			for (const f of node.fields) {
-				const value = normaliseFieldForExport(node, f, opts.retainIds, deps);
-				(entry.fields as Record<string, unknown>)[f.key] = value;
+		let fetchedCount = 0;
+		let backRefCount = 0;
+		opts.onProgress?.({ phase: 'fetch', message: `Fetching ${type}…`, currentType: type, count: 0 });
+		const nodes = await fetchAllMetaobjects(client, type, async (nodesPage) => {
+			fetchedCount += nodesPage.length;
+			opts.onProgress?.({ phase: 'fetch', message: `Fetched ${fetchedCount}`, currentType: type, count: fetchedCount, backRefCount: opts.includeBackReferences ? backRefCount : undefined });
+			const paginationPromises: Array<Promise<void>> = [];
+			for (const node of nodesPage) {
+				const key = `${node.type}/${node.handle}`;
+				const entry: ExportEntry = {
+					handle: node.handle,
+					type: normaliseMetaobjectType(node.type),
+					fields: {} as Record<string, unknown>
+				};
+				const deps = new Set<string>();
+				for (const f of node.fields) {
+					const value = normaliseFieldForExport(node, f, opts.retainIds, deps);
+					(entry.fields as Record<string, unknown>)[f.key] = value;
+				}
+				if (deps.size > 0) dependsOnMap.set(key, deps);
+				if (opts.includeBackReferences) {
+					try {
+						// use initial edges directly
+						const initial = extractInitialBackReferencesFromNode(node);
+						backRefCount += initial.length;
+						if (initial.length > 0) entry.backReferences = initial.slice();
+						const needsMore = Boolean(node.referencedBy?.pageInfo?.hasNextPage);
+						if (needsMore) {
+							const startAfter = node.referencedBy?.pageInfo?.endCursor;
+							const p = fetchBackReferencesFrom(client, node.id, startAfter).then((rest) => {
+								backRefCount += rest.length;
+								if (rest.length > 0) entry.backReferences = (entry.backReferences ?? []).concat(rest);
+								opts.onProgress?.({ phase: 'fetch', message: `Back references fetched`, currentType: type, count: fetchedCount, backRefCount });
+							}).catch((err) => {
+								opts.onProgress?.({ phase: 'fetch', message: `Back references error`, currentType: type, count: fetchedCount, backRefCount, error: String(err) });
+							});
+							paginationPromises.push(p);
+						}
+					} catch (err) {
+						opts.onProgress?.({ phase: 'fetch', message: `Back references error`, currentType: type, count: fetchedCount, backRefCount, error: String(err) });
+					}
+				}
+				allEntries.push(entry);
 			}
-			if (deps.size > 0) dependsOnMap.set(key, deps);
-
-			if (opts.includeBackReferences) {
-				const backRefs = await fetchBackReferences(client, node.id);
-				if (backRefs.length > 0) entry.backReferences = backRefs;
-			}
-
-			allEntries.push(entry);
-		}
+			// wait for all backref paginations for this page to finish before moving to next page
+			if (paginationPromises.length > 0) await Promise.all(paginationPromises);
+		});
+		// Per-type completion update
+		opts.onProgress?.({ phase: 'fetch', message: `Completed`, currentType: type, count: fetchedCount, backRefCount: opts.includeBackReferences ? backRefCount : undefined, doneType: true });
 	}
 
 	const ordered = topoSortEntries(allEntries, dependsOnMap);

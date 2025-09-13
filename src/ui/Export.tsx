@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { Box, Text, useInput } from 'ink';
 import { FocusTextInput } from '@ui/components/FocusTextInput';
 import { useFocusRegion } from '@context/FocusContext';
@@ -26,6 +26,10 @@ export function Export() {
 	const [listIndex, setListIndex] = useState<number>(0);
 	const [progress, setProgress] = useState<ExportProgress | undefined>(undefined);
 	const [step, setStep] = useState<number>(1); // 1=Form, 2=Run
+
+	// Per-type live progress
+	const [typeProgress, setTypeProgress] = useState<Record<string, { count: number; backRefs: number; done: boolean }>>({});
+	const orderedTypes = useMemo(() => types.slice(), [types]);
 
 	const hasList = types.length > 0;
 	const maxFocus = hasList ? 4 : 3;
@@ -90,11 +94,26 @@ export function Export() {
 		}
 	});
 
+	function handleProgress(p: ExportProgress) {
+		setProgress(p);
+		if (p.currentType) {
+			setTypeProgress(prev => ({
+				...prev,
+				[p.currentType!]: {
+					count: p.count ?? prev[p.currentType!]?.count ?? 0,
+					backRefs: p.backRefCount ?? prev[p.currentType!]?.backRefs ?? 0,
+					done: p.doneType ?? prev[p.currentType!]?.done ?? false
+				}
+			}));
+		}
+	}
+
 	async function run() {
 		setRunning(true);
 		setError(undefined);
 		setProgress(undefined);
 		setResultPath(undefined);
+		setTypeProgress({});
 		setStep(2);
 		try {
 			const client = createShopifyClientFromEnv();
@@ -104,7 +123,7 @@ export function Export() {
 				types,
 				retainIds,
 				includeBackReferences: includeBackRefs,
-				onProgress: setProgress
+				onProgress: handleProgress
 			});
 			setResultPath(outPath);
 		} catch (e) {
@@ -181,9 +200,23 @@ export function Export() {
 				<Text>Selected types:</Text>
 				{types.length > 0 ? types.map((t, idx) => <Text key={`${t}-${idx}`}>- {t}</Text>) : <Text dimColor>None</Text>}
 			</Box>
-			<Box marginTop={1}>
-				<Text dimColor>{running ? (progress ? `${progress.phase}: ${progress.message}${progress.count ? ` (${progress.count})` : ''}` : 'Exporting…') : (resultPath ? 'Done. Esc to go back' : 'Ready')}</Text>
+			<Box marginTop={1} flexDirection="column">
+				<Text>Progress by type:</Text>
+				{orderedTypes.map((t) => {
+					const row = typeProgress[t] ?? { count: 0, backRefs: 0, done: false };
+					return (
+						<Text key={t} dimColor={!row.done && row.count === 0} color={row.done ? 'green' : undefined}>
+							{t}: {row.count}{includeBackRefs ? ` • backrefs ${row.backRefs}` : ''}{row.done ? ' • done' : ''}
+						</Text>
+					);
+				})}
 			</Box>
+			{progress ? (
+				<Box marginTop={1} flexDirection="column">
+					<Text dimColor>{`${progress.phase}: ${progress.currentType ? `${progress.currentType} • ` : ''}${progress.message}${progress.count !== undefined ? ` (${progress.count})` : ''}${progress.backRefCount !== undefined ? ` • backrefs ${progress.backRefCount}` : ''}`}</Text>
+					{progress.error ? <Text color="red">{progress.error}</Text> : null}
+				</Box>
+			) : null}
 			{error ? (
 				<Box marginTop={1}><Text color="red">{error}</Text></Box>
 			) : null}

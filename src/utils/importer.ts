@@ -1,6 +1,7 @@
 import { ShopifyGraphQLClient } from '@utils/shopify/client';
 import { HandleResolver } from '@utils/shopify/resolve';
 import type { ExportFile, ExportEntry } from '@utils/schema';
+import { normaliseAppNamespace } from '@utils/schema';
 import { upsertMetaobject } from '@utils/shopify/metaobjects';
 import { metafieldsSetBatch } from '@utils/shopify/metafields';
 
@@ -14,6 +15,7 @@ export type ImportProgress = {
 
 export type ImportOptions = {
 	onProgress?: (p: ImportProgress) => void;
+	skipOnError?: boolean;
 };
 
 export async function runImport(client: ShopifyGraphQLClient, file: ExportFile, opts: ImportOptions): Promise<void> {
@@ -22,17 +24,29 @@ export async function runImport(client: ShopifyGraphQLClient, file: ExportFile, 
 	const createdIdsByHandleKey = new Map<string, string>(); // key: type/handle -> id
 	for (let i = 0; i < entries.length; i += 1) {
 		const e = entries[i];
-		opts.onProgress?.({ index: i, total: entries.length, current: e, message: `Upserting ${e.type}/${e.handle}` });
-		const fields = await transformFieldsForImport(e.fields, resolver);
-		const input = {
-			handle: { type: e.type, handle: e.handle },
-			metaobject: { fields: Object.entries(fields).map(([key, value]) => ({ key, value: serialiseField(value) })) }
-		};
-		const res = await upsertMetaobject(client, input);
-		if (res.userErrors && res.userErrors.length) {
-			throw new Error(`Failed to upsert ${e.type}/${e.handle}: ${res.userErrors.map(u => u.message).join('; ')}`);
+		try {
+			opts.onProgress?.({ index: i, total: entries.length, current: e, message: `Upserting ${e.type}/${e.handle}` });
+			const fields = await transformFieldsForImport(e.fields, resolver);
+			const inputFields = Object.entries(fields)
+				.filter(([, value]) => value !== undefined && !(Array.isArray(value) && value.length === 0))
+				.map(([key, value]) => ({ key, value: serialiseField(value) }));
+			const input = {
+				handle: { type: e.type, handle: e.handle },
+				metaobject: { fields: inputFields }
+			};
+			const res = await upsertMetaobject(client, input);
+			if (res.userErrors && res.userErrors.length) {
+				throw new Error(`Failed to upsert ${e.type}/${e.handle}: ${res.userErrors.map(u => u.message).join('; ')}`);
+			}
+			if (res.id) createdIdsByHandleKey.set(`${e.type}/${e.handle}`, res.id);
+		} catch (err) {
+			const msg = String(err);
+			if (opts.skipOnError) {
+				opts.onProgress?.({ index: i, total: entries.length, current: e, message: `Skipped ${e.type}/${e.handle}`, error: msg });
+				continue;
+			}
+			throw err;
 		}
-		if (res.id) createdIdsByHandleKey.set(`${e.type}/${e.handle}`, res.id);
 	}
 
 	// Post-pass: apply back references if present
@@ -40,7 +54,7 @@ export async function runImport(client: ShopifyGraphQLClient, file: ExportFile, 
 	for (const e of entries) {
 		const brs = e.backReferences ?? [];
 		for (const br of brs) {
-			pending.push({ ownerRef: br.owner, namespace: br.namespace, key: br.key, metaobjectKey: `${e.type}/${e.handle}` });
+			pending.push({ ownerRef: br.owner, namespace: normaliseAppNamespace(br.namespace), key: br.key, metaobjectKey: `${e.type}/${e.handle}` });
 		}
 	}
 	if (pending.length === 0) return;
@@ -75,32 +89,117 @@ export async function runImport(client: ShopifyGraphQLClient, file: ExportFile, 
 	const res2 = await metafieldsSetBatch(client, items);
 	if (res2.userErrors.length) {
 		const msg = res2.userErrors.map(u => u.message).join('; ');
+		if (opts.skipOnError) {
+			opts.onProgress?.({ index: entries.length, total: entries.length, message: `Skipped setting some back references`, error: msg });
+			return;
+		}
 		throw new Error(`Failed to set back references: ${msg}`);
+	}
+}
+
+export async function runImportOne(client: ShopifyGraphQLClient, file: ExportFile, index: number, opts: ImportOptions): Promise<void> {
+	const resolver = new HandleResolver(client);
+	const entries = file.entries;
+	const e = entries[index];
+	if (!e) return;
+	opts.onProgress?.({ index, total: entries.length, current: e, message: `Matching handles…` });
+	try {
+		const fields = await transformFieldsForImport(e.fields, resolver);
+		const inputFields = Object.entries(fields)
+			.filter(([, value]) => value !== undefined && !(Array.isArray(value) && value.length === 0))
+			.map(([key, value]) => ({ key, value: serialiseField(value) }));
+		opts.onProgress?.({ index, total: entries.length, current: e, message: `Creating entry…` });
+		const input = {
+			handle: { type: e.type, handle: e.handle },
+			metaobject: { fields: inputFields }
+		};
+		const res = await upsertMetaobject(client, input);
+		if (res.userErrors && res.userErrors.length) {
+			throw new Error(`Failed to upsert ${e.type}/${e.handle}: ${res.userErrors.map(u => u.message).join('; ')}`);
+		}
+		const createdId = res.id;
+		const brs = e.backReferences ?? [];
+		if (createdId && brs.length > 0) {
+			opts.onProgress?.({ index, total: entries.length, current: e, message: `Setting back references…` });
+			// Resolve owners and set metafields for this entry only
+			const items: { ownerId: string; namespace: string; key: string; ids?: string[]; id?: string }[] = [];
+			// Group by owner/namespace/key
+			const groups = new Map<string, { ownerId: string; namespace: string; key: string; metaobjectIds: string[] }>();
+			for (const br of brs) {
+				const ownerId = br.owner.startsWith('handle://shopify/') ? await resolver.resolve(br.owner) : (br.owner.startsWith('gid://shopify/') ? br.owner : null);
+				if (!ownerId) continue;
+				const ns = normaliseAppNamespace(br.namespace);
+				const gk = `${ownerId}:${ns}:${br.key}`;
+				if (!groups.has(gk)) groups.set(gk, { ownerId, namespace: ns, key: br.key, metaobjectIds: [] });
+				groups.get(gk)!.metaobjectIds.push(createdId);
+			}
+			for (const g of groups.values()) {
+				const uniques = Array.from(new Set(g.metaobjectIds));
+				if (uniques.length === 1) items.push({ ownerId: g.ownerId, namespace: g.namespace, key: g.key, id: uniques[0] });
+				else items.push({ ownerId: g.ownerId, namespace: g.namespace, key: g.key, ids: uniques });
+			}
+			if (items.length > 0) {
+				const res2 = await metafieldsSetBatch(client, items);
+				if (res2.userErrors.length) {
+					const msg = res2.userErrors.map(u => u.message).join('; ');
+					if (!opts.skipOnError) throw new Error(`Failed to set back references: ${msg}`);
+				}
+			}
+		}
+	} catch (err) {
+		const msg = String(err);
+		if (opts.skipOnError) {
+			opts.onProgress?.({ index, total: entries.length, current: e, message: `Skipped ${e.type}/${e.handle}`, error: msg });
+			return;
+		}
+		throw err;
 	}
 }
 
 async function transformFieldsForImport(fields: Record<string, unknown>, resolver: HandleResolver): Promise<Record<string, unknown>> {
 	const out: Record<string, unknown> = {};
 	for (const [key, val] of Object.entries(fields)) {
-		out[key] = await transformValue(val, resolver);
+		const transformed = await transformValue(val, resolver);
+		if (transformed !== undefined && !(Array.isArray(transformed) && transformed.length === 0)) {
+			out[key] = transformed;
+		}
 	}
 	return out;
 }
 
+function tryParseJson(text: string): unknown | undefined {
+	try {
+		return JSON.parse(text);
+	} catch {
+		return undefined;
+	}
+}
+
 async function transformValue(val: unknown, resolver: HandleResolver): Promise<unknown> {
-	if (typeof val === 'string' && val.startsWith('handle://shopify/')) {
-		const id = await resolver.resolve(val);
-		return id ?? val; // fallback to original if not resolved
+	if (typeof val === 'string') {
+		// Direct handle ref string
+		if (val.startsWith('handle://shopify/')) {
+			const id = await resolver.resolve(val);
+			return id ?? undefined; // skip unresolved
+		}
+		// JSON-encoded array/object that may contain handle refs
+		if ((val.startsWith('[') || val.startsWith('{'))) {
+			const parsed = tryParseJson(val);
+			if (parsed !== undefined) return await transformValue(parsed, resolver);
+		}
 	}
 	if (Array.isArray(val)) {
 		const mapped = await Promise.all(val.map(v => transformValue(v, resolver)));
-		return mapped;
+		return mapped.filter(v => v !== undefined);
 	}
 	if (val && typeof val === 'object') {
 		const inputObj = val as Record<string, unknown>;
 		const obj: Record<string, unknown> = {};
-		for (const [k, v] of Object.entries(inputObj)) obj[k] = await transformValue(v, resolver);
-		return obj;
+		for (const [k, v] of Object.entries(inputObj)) {
+			const t = await transformValue(v, resolver);
+			if (t !== undefined && !(Array.isArray(t) && t.length === 0)) obj[k] = t;
+		}
+		return Object.keys(obj).length > 0 ? obj : undefined;
 	}
 	return val;
 }

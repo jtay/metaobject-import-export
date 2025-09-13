@@ -4,18 +4,8 @@ import { EnvironmentProvider } from '@context/EnvironmentContext';
 import { AppLayout } from '@ui/AppLayout';
 import { pages } from '@ui/navConfig';
 import { FocusProvider } from '@context/FocusContext';
-import { useEnvironment } from '@context/EnvironmentContext';
-import { EnvSetup } from '@ui/setup/EnvSetup';
 import { NavigationProvider } from '@context/NavigationContext';
 import { ImportProvider } from '@context/ImportContext';
-
-function Root() {
-	const { selectedEnv } = useEnvironment();
-	if (!selectedEnv) {
-		return <EnvSetup />;
-	}
-	return <AppLayout pages={pages} />;
-}
 
 function main(): void {
 	render(
@@ -23,7 +13,7 @@ function main(): void {
 			<FocusProvider>
 				<NavigationProvider>
 					<ImportProvider>
-						<Root />
+						<AppLayout pages={pages} />
 					</ImportProvider>
 				</NavigationProvider>
 			</FocusProvider>

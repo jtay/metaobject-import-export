@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useEffect } from 'react';
 import { Box, Text } from 'ink';
 import SelectInput from 'ink-select-input';
 import { useEnvironment, EnvironmentFile } from '@context/EnvironmentContext';
@@ -6,7 +6,9 @@ import { useEnvironment, EnvironmentFile } from '@context/EnvironmentContext';
 type SelectItem = { label: string; value: EnvironmentFile; key?: string };
 
 export function EnvSelector() {
-	const { availableEnvs, selectEnv } = useEnvironment();
+	const { availableEnvs, selectEnv, refreshEnvs } = useEnvironment();
+
+	useEffect(() => { refreshEnvs(); }, []);
 
 	const items: SelectItem[] = useMemo(() => {
 		return availableEnvs.map((env) => ({ label: env.name, value: env }));
