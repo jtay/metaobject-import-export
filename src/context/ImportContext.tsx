@@ -19,6 +19,7 @@ export type ImportContextValue = {
 	failed: Map<number, string>;
 	skipOnError: boolean;
 	results: Map<number, ImportResult>;
+	entryCompletionStatus: Map<number, 'metaobject-created' | 'backreferences-pending' | 'backreferences-completed' | 'failed'>;
 	selectFile: (file: OutputFile) => void;
 	clear: () => void;
 	confirmImport: () => void;
@@ -39,6 +40,7 @@ export function ImportProvider({ children }: { children: React.ReactNode }) {
 	const [failed, setFailed] = useState<Map<number, string>>(new Map());
 	const [skipOnError, setSkipOnError] = useState<boolean>(false);
 	const [results, setResults] = useState<Map<number, ImportResult>>(new Map());
+	const [entryCompletionStatus, setEntryCompletionStatus] = useState<Map<number, 'metaobject-created' | 'backreferences-pending' | 'backreferences-completed' | 'failed'>>(new Map());
 
 	const selectFile = (file: OutputFile) => {
 		setSelected(file);
@@ -52,12 +54,14 @@ export function ImportProvider({ children }: { children: React.ReactNode }) {
 				setProcessed(new Set());
 				setFailed(new Map());
 				setResults(new Map());
+				setEntryCompletionStatus(new Map());
 			} catch {
 				setParsedFile(undefined);
 				setStats(undefined);
 				setProcessed(new Set());
 				setFailed(new Map());
 				setResults(new Map());
+				setEntryCompletionStatus(new Map());
 			}
 		} catch (err) {
 			setContentText(`Failed to read file: ${String(err)}`);
@@ -66,6 +70,7 @@ export function ImportProvider({ children }: { children: React.ReactNode }) {
 			setProcessed(new Set());
 			setFailed(new Map());
 			setResults(new Map());
+			setEntryCompletionStatus(new Map());
 		}
 	};
 
@@ -79,6 +84,7 @@ export function ImportProvider({ children }: { children: React.ReactNode }) {
 		setProcessed(new Set());
 		setFailed(new Map());
 		setResults(new Map());
+		setEntryCompletionStatus(new Map());
 	};
 
 	const confirmImport = useCallback(() => {
@@ -87,17 +93,27 @@ export function ImportProvider({ children }: { children: React.ReactNode }) {
 		const startedAt = new Date();
 		setProgress({ index: 0, total: parsedFile.count, message: 'Starting…' });
 		const client = createShopifyClientFromEnv();
-		let lastIndex = -1;
 		void runImport(client, parsedFile, {
 			onProgress: (p) => {
 				setProgress(p);
-				// Mark previously completed entry as processed when index advances
-				if (p.index > lastIndex + 0) {
-					const newProcessed = new Set<number>(processed);
-					for (let i = 0; i < p.index; i += 1) newProcessed.add(i);
-					setProcessed(newProcessed);
-					lastIndex = p.index;
+				
+				// Update entry completion status if provided
+				if (p.entryCompletionStatus) {
+					setEntryCompletionStatus(new Map(p.entryCompletionStatus));
 				}
+				
+				// Mark entries as processed only when they are fully completed (including backreferences)
+				if (p.entryCompletionStatus) {
+					const newProcessed = new Set<number>();
+					for (const [index, status] of p.entryCompletionStatus) {
+						if (status === 'backreferences-completed') {
+							newProcessed.add(index);
+						}
+					}
+					setProcessed(newProcessed);
+				}
+				
+				// Handle errors and failures
 				if (p.error && Number.isFinite(p.index)) {
 					setFailed(prev => {
 						const m = new Map(prev);
@@ -115,10 +131,17 @@ export function ImportProvider({ children }: { children: React.ReactNode }) {
 			},
 			skipOnError
 		}).then(() => {
-			// Mark all processed on completion
-			const all = new Set<number>();
-			for (let i = 0; i < (parsedFile?.count ?? 0); i += 1) all.add(i);
-			setProcessed(all);
+			// Mark all completed entries as processed on completion
+			if (parsedFile) {
+				const allCompleted = new Set<number>();
+				for (let i = 0; i < parsedFile.count; i += 1) {
+					const status = entryCompletionStatus.get(i);
+					if (status === 'backreferences-completed') {
+						allCompleted.add(i);
+					}
+				}
+				setProcessed(allCompleted);
+			}
 			setIsRunning(false);
 			setProgress(undefined);
 			// Persist summary
@@ -133,7 +156,15 @@ export function ImportProvider({ children }: { children: React.ReactNode }) {
 					count: entries.length,
 					results: entries.map((e, idx) => {
 						const r = results.get(idx);
-						return { index: idx, type: e.type, handle: e.handle, status: r?.status ?? 'success', error: r?.error };
+						const status = entryCompletionStatus.get(idx);
+						return { 
+							index: idx, 
+							type: e.type, 
+							handle: e.handle, 
+							status: r?.status ?? (status === 'backreferences-completed' ? 'success' : 'pending'), 
+							completionStatus: status,
+							error: r?.error 
+						};
 					})
 				};
 				const dir = path.join(process.cwd(), 'outputs');
@@ -145,9 +176,9 @@ export function ImportProvider({ children }: { children: React.ReactNode }) {
 			}
 		}).catch((e) => {
 			setIsRunning(false);
-			setProgress(prev => ({ index: prev?.index ?? 0, total: prev?.total ?? (parsedFile?.count ?? 0), message: String(e) }));
+			setProgress(() => ({ index: 0, total: parsedFile?.count ?? 0, message: String(e) }));
 		});
-	}, [parsedFile, isRunning, processed, skipOnError, results, selected]);
+	}, [parsedFile, isRunning, skipOnError, results, selected, entryCompletionStatus]);
 
 	const importOne = useCallback((index: number) => {
 		if (!parsedFile || isRunning) return;
@@ -157,6 +188,18 @@ export function ImportProvider({ children }: { children: React.ReactNode }) {
 		void runImportOne(client, parsedFile, index, {
 			onProgress: (p) => {
 				setProgress(p);
+				
+				// Update entry completion status if provided
+				if (p.entryCompletionStatus) {
+					setEntryCompletionStatus(prev => {
+						const m = new Map(prev);
+						for (const [idx, status] of p.entryCompletionStatus) {
+							m.set(idx, status);
+						}
+						return m;
+					});
+				}
+				
 				if (p.error) {
 					setFailed(prev => {
 						const m = new Map(prev);
@@ -170,27 +213,36 @@ export function ImportProvider({ children }: { children: React.ReactNode }) {
 		}).then(() => {
 			setIsRunning(false);
 			setProgress(undefined);
-			setProcessed(prev => {
-				const newSet = new Set(prev);
-				newSet.add(index);
-				return newSet;
-			});
-			setResults(prev => { const m = new Map(prev); m.set(index, { status: 'success' }); return m; });
+			// Only mark as processed if fully completed (including backreferences)
+			const status = entryCompletionStatus.get(index);
+			if (status === 'backreferences-completed') {
+				setProcessed(prev => {
+					const newSet = new Set(prev);
+					newSet.add(index);
+					return newSet;
+				});
+				setResults(prev => { const m = new Map(prev); m.set(index, { status: 'success' }); return m; });
+			}
 		}).catch((e) => {
 			setIsRunning(false);
-			setProgress(prev => ({ index: index, total: parsedFile.count, message: String(e) }));
+			setProgress(() => ({ index: index, total: parsedFile.count, message: String(e) }));
 			setFailed(prev => {
 				const m = new Map(prev);
 				m.set(index, String(e));
 				return m;
 			});
 			setResults(prev => { const m = new Map(prev); m.set(index, { status: 'failed', error: String(e) }); return m; });
+			setEntryCompletionStatus(prev => {
+				const m = new Map(prev);
+				m.set(index, 'failed');
+				return m;
+			});
 		});
-	}, [parsedFile, isRunning, skipOnError]);
+	}, [parsedFile, isRunning, skipOnError, entryCompletionStatus]);
 
 	const toggleSkipOnError = useCallback(() => setSkipOnError(v => !v), []);
 
-	const value = useMemo<ImportContextValue>(() => ({ selected, contentText, parsedFile, stats, isRunning, progress, processed, failed, skipOnError, results, selectFile, clear, confirmImport, importOne, toggleSkipOnError }), [selected, contentText, parsedFile, stats, isRunning, progress, processed, failed, skipOnError, results, confirmImport, importOne, toggleSkipOnError]);
+	const value = useMemo<ImportContextValue>(() => ({ selected, contentText, parsedFile, stats, isRunning, progress, processed, failed, skipOnError, results, entryCompletionStatus, selectFile, clear, confirmImport, importOne, toggleSkipOnError }), [selected, contentText, parsedFile, stats, isRunning, progress, processed, failed, skipOnError, results, entryCompletionStatus, confirmImport, importOne, toggleSkipOnError]);
 
 	return (
 		<ImportContext.Provider value={value}>

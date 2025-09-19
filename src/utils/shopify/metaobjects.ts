@@ -20,6 +20,7 @@ const QUERY_METAOBJECTS = `query MetaobjectsPage($type: String!, $first: Int!, $
           ... on Page { id handle }
           ... on ProductVariant { id sku product { handle } }
           ... on Collection { id handle }
+		  ... on MediaImage { id image { url } }
         }
         references(first: 25) {
           nodes {
@@ -29,6 +30,7 @@ const QUERY_METAOBJECTS = `query MetaobjectsPage($type: String!, $first: Int!, $
             ... on Page { id handle }
             ... on ProductVariant { id sku product { handle } }
             ... on Collection { id handle }
+			... on MediaImage { id image { url } }
           }
         }
       }
@@ -68,8 +70,8 @@ export type MetaobjectNode = {
 		type: string;
 		value?: string | null;
 		jsonValue?: unknown;
-		reference?: { __typename: string; id: string; handle?: string; type?: string; sku?: string; product?: { handle?: string } } | null;
-		references?: { nodes: Array<{ __typename: string; id: string; handle?: string; type?: string; sku?: string; product?: { handle?: string } }> } | null;
+		reference?: { __typename: string; id: string; handle?: string; type?: string; sku?: string; product?: { handle?: string }; image?: { url?: string } } | null;
+		references?: { nodes: Array<{ __typename: string; id: string; handle?: string; type?: string; sku?: string; product?: { handle?: string }; image?: { url?: string } }> } | null;
 	}>;
 	referencedBy?: { pageInfo: { hasNextPage: boolean; endCursor?: string }; edges: BackRefEdge[] } | null;
 };
@@ -112,7 +114,7 @@ export function isGid(value: unknown): value is string {
 
 export type ShopifyHandleRef = `handle://shopify/${string}`;
 
-export function toHandleRef(resource: { __typename: string; id: string; handle?: string; type?: string; sku?: string; product?: { handle?: string } }): ShopifyHandleRef | undefined {
+export function toHandleRef(resource: { __typename: string; id: string; handle?: string; type?: string; sku?: string; product?: { handle?: string }; image?: { url?: string } }): ShopifyHandleRef | undefined {
 	switch (resource.__typename) {
 		case 'Metaobject': {
 			if (resource.handle && resource.type) return `handle://shopify/Metaobject/${normaliseMetaobjectType(resource.type)}/${resource.handle}`;
@@ -134,6 +136,10 @@ export function toHandleRef(resource: { __typename: string; id: string; handle?:
 		}
 		case 'Collection': {
 			if (resource.handle) return `handle://shopify/Collection/${resource.handle}`;
+			return undefined;
+		}
+		case 'MediaImage': {
+			if (resource.image?.url) return `handle://shopify/MediaImage/${resource.image.url}`;
 			return undefined;
 		}
 		default:

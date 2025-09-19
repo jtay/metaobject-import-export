@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState, useCallback } from 'react';
 import { Box, Text, useInput, useStdout } from 'ink';
 import { useImport } from '@context/ImportContext';
 import { useFocusRegion } from '@context/FocusContext';
@@ -11,7 +11,7 @@ import { Table, type Column } from '@ui/components/Table';
 
 export function Import() {
 	useFocusRegion('page:import', true);
-	const { selected, contentText, parsedFile, stats, confirmImport, importOne, isRunning, progress, selectFile, clear, processed, failed, skipOnError, toggleSkipOnError } = useImport();
+	const { selected, contentText, parsedFile, stats, confirmImport, importOne, isRunning, progress, selectFile, failed, skipOnError, toggleSkipOnError, entryCompletionStatus } = useImport();
 	const { navigate } = useNavigation();
 	const { availableEnvs } = useEnvironment();
 
@@ -51,8 +51,58 @@ export function Import() {
 	const [scroll, setScroll] = useState(0);
 	const [selectedRow, setSelectedRow] = useState(0);
 
-	const entries = parsedFile?.entries ?? [];
+	const entries = useMemo(() => parsedFile?.entries ?? [], [parsedFile?.entries]);
 	useEffect(() => { setSelectedRow(0); setScroll(0); }, [parsedFile]);
+
+	// Helper function to get status icon
+	const getStatusIcon = useCallback((idx: number): string => {
+		if (failed.has(idx)) return '✖';
+		const status = entryCompletionStatus.get(idx);
+		switch (status) {
+			case 'backreferences-completed': return '✔';
+			case 'backreferences-pending': return '⏳';
+			case 'metaobject-created': return '◐';
+			case 'failed': return '✖';
+			default: return ' ';
+		}
+	}, [failed, entryCompletionStatus]);
+
+	// Helper function to get status description
+	const getStatusDescription = useCallback((idx: number): string => {
+		if (failed.has(idx)) return 'Failed';
+		const status = entryCompletionStatus.get(idx);
+		switch (status) {
+			case 'backreferences-completed': return 'Complete';
+			case 'backreferences-pending': return 'Processing backreferences';
+			case 'metaobject-created': return 'Metaobject created';
+			case 'failed': return 'Failed';
+			default: return 'Pending';
+		}
+	}, [failed, entryCompletionStatus]);
+
+	// Helper function to get phase display name
+	const getPhaseDisplayName = (phase: string): string => {
+		switch (phase) {
+			case 'pre-resolve': return 'Resolving References';
+			case 'metaobjects': return 'Creating Metaobjects';
+			case 'backreferences': return 'Setting Backreferences';
+			default: return phase;
+		}
+	};
+
+	// Helper function to get pre-resolve phase display name
+	const getPreResolveDisplayName = (preResolvePhase: string): string => {
+		switch (preResolvePhase) {
+			case 'collecting': return 'Collecting references';
+			case 'resolving-products': return 'Resolving products';
+			case 'resolving-collections': return 'Resolving collections';
+			case 'resolving-pages': return 'Resolving pages';
+			case 'resolving-metaobjects': return 'Resolving metaobjects';
+			case 'resolving-variants': return 'Resolving variants';
+			case 'complete': return 'Complete';
+			default: return preResolvePhase;
+		}
+	};
 
 	// Table with status column (invisible header)
 	const tableColumns: Column[] = useMemo(() => ([
@@ -62,13 +112,11 @@ export function Import() {
 	]), []);
 	const tableRowsAll: string[][] = useMemo(() => {
 		return entries.map((e, idx) => {
-			const keys = Object.keys(e.fields ?? {}).slice(0, 6).join(', ');
-			const status = failed.has(idx) ? '✖' : (processed.has(idx) ? '✔' : '');
+			const status = getStatusIcon(idx);
 			return [status, e.type ?? 'unknown', e.handle ?? ''];
 		});
-	}, [entries, processed, failed]);
+	}, [entries, getStatusIcon]);
 	const tableSlice = tableRowsAll.slice(scroll, scroll + previewHeight);
-	const maxTableScroll = Math.max(0, tableRowsAll.length - previewHeight);
 	const maxJsonScroll = Math.max(0, lines.length - previewHeight);
 
 	// Keep selected row within viewport
@@ -76,6 +124,28 @@ export function Import() {
 		if (selectedRow < scroll) setScroll(selectedRow);
 		else if (selectedRow >= scroll + previewHeight) setScroll(selectedRow - previewHeight + 1);
 	}, [selectedRow, scroll, previewHeight]);
+
+	// Calculate completion stats
+	const completionStats = useMemo(() => {
+		const total = entries.length;
+		let completed = 0;
+		let pending = 0;
+		let processing = 0;
+		let failed = 0;
+		
+		for (let i = 0; i < total; i++) {
+			const status = entryCompletionStatus.get(i);
+			switch (status) {
+				case 'backreferences-completed': completed++; break;
+				case 'backreferences-pending': processing++; break;
+				case 'metaobject-created': processing++; break;
+				case 'failed': failed++; break;
+				default: pending++; break;
+			}
+		}
+		
+		return { total, completed, pending, processing, failed };
+	}, [entries.length, entryCompletionStatus]);
 
 	// Keyboard handling per step
 	useInput((input, key) => {
@@ -95,32 +165,38 @@ export function Import() {
 		}
 
 		if (step === 2) {
-			// Toggle view
+			// Toggle view (always available)
 			if (input?.toLowerCase() === 'v') { setViewMode(m => m === 'table' ? 'json' : 'table'); return; }
-			// Toggle skip on error
-			if ((key.meta || key.ctrl) && input?.toLowerCase() === 's' && !isRunning) { toggleSkipOnError(); return; }
-			// Full import: Cmd+G (prefer meta to avoid ctrl+g clash with navbar)
-			if ((key.meta || key.ctrl) && input?.toLowerCase() === 'g' && !isRunning && parsedFile) { confirmImport(); return; }
-			// Back to file selection: Cmd/Ctrl+X
-			if ((key.meta || key.ctrl) && input?.toLowerCase() === 'x' && !isRunning) { setStep(1); return; }
-			if (viewMode === 'json') {
-				if (!isRunning && key.downArrow) setScroll(s => Math.min(s + 1, maxJsonScroll));
-				if (!isRunning && key.upArrow) setScroll(s => Math.max(0, s - 1));
-				if (!isRunning && key.pageDown) setScroll(s => Math.min(s + previewHeight, maxJsonScroll));
-				if (!isRunning && key.pageUp) setScroll(s => Math.max(0, s - previewHeight));
-			} else {
-				if (!isRunning && key.downArrow) setSelectedRow(i => Math.min(entries.length - 1, i + 1));
-				if (!isRunning && key.upArrow) setSelectedRow(i => Math.max(0, i - 1));
-				if (!isRunning && key.pageDown) setSelectedRow(i => Math.min(entries.length - 1, i + previewHeight));
-				if (!isRunning && key.pageUp) setSelectedRow(i => Math.max(0, i - previewHeight));
+			
+			// Import operations - only when not running
+			if (!isRunning) {
+				// Toggle skip on error
+				if ((key.meta || key.ctrl) && input?.toLowerCase() === 's') { toggleSkipOnError(); return; }
+				// Full import: Cmd+G (prefer meta to avoid ctrl+g clash with navbar)
+				if ((key.meta || key.ctrl) && input?.toLowerCase() === 'g' && parsedFile) { confirmImport(); return; }
+				// Back to file selection: Cmd/Ctrl+X
+				if ((key.meta || key.ctrl) && input?.toLowerCase() === 'x') { setStep(1); return; }
+				// Full import: Cmd/Ctrl+Enter (be lenient about Enter detection)
+				const isEnter = key.return || input === '\r' || input === '\n';
+				if (parsedFile && (key.meta || key.ctrl) && isEnter) { confirmImport(); return; }
+				// Single entry import: plain Enter
+				if (parsedFile && isEnter && !(key.meta || key.ctrl)) {
+					importOne(selectedRow);
+					return;
+				}
 			}
-			// Full import: Cmd/Ctrl+Enter (be lenient about Enter detection)
-			const isEnter = key.return || input === '\r' || input === '\n';
-			if (!isRunning && parsedFile && (key.meta || key.ctrl) && isEnter) { confirmImport(); return; }
-			// Single entry import: plain Enter
-			if (!isRunning && parsedFile && isEnter && !(key.meta || key.ctrl)) {
-				importOne(selectedRow);
-				return;
+			
+			// Navigation - always available (even during import)
+			if (viewMode === 'json') {
+				if (key.downArrow) setScroll(s => Math.min(s + 1, maxJsonScroll));
+				if (key.upArrow) setScroll(s => Math.max(0, s - 1));
+				if (key.pageDown) setScroll(s => Math.min(s + previewHeight, maxJsonScroll));
+				if (key.pageUp) setScroll(s => Math.max(0, s - previewHeight));
+			} else {
+				if (key.downArrow) setSelectedRow(i => Math.min(entries.length - 1, i + 1));
+				if (key.upArrow) setSelectedRow(i => Math.max(0, i - 1));
+				if (key.pageDown) setSelectedRow(i => Math.min(entries.length - 1, i + previewHeight));
+				if (key.pageUp) setSelectedRow(i => Math.max(0, i - previewHeight));
 			}
 		}
 	});
@@ -161,6 +237,7 @@ export function Import() {
 	// Step 2: 3-column responsive layout
 	const header = selected ? `${selected.name} (${selected.type}) — ${new Date(selected.createdMs).toLocaleString()}` : 'No file selected';
 	const selectedEntry = entries[selectedRow];
+	
 	return (
 		<Box flexDirection="row" justifyContent="space-between">
 			<Box width={widthThird} flexDirection="column" marginRight={1}>
@@ -179,12 +256,35 @@ export function Import() {
 					)}
 				</Box>
 				<Box marginTop={1} flexDirection="column">
+					<Text>Progress:</Text>
+					<Text>✔ Complete: {completionStats.completed}</Text>
+					<Text>⏳ Processing: {completionStats.processing}</Text>
+					<Text>○ Pending: {completionStats.pending}</Text>
+					<Text>✖ Failed: {completionStats.failed}</Text>
+					{isRunning && progress?.phase && (
+						<Box marginTop={1}>
+							<Text color="cyan">
+								🔄 Current: {getPhaseDisplayName(progress.phase)}
+								{progress.phase === 'pre-resolve' && progress.preResolvePhase !== 'complete' && 
+									` (${getPreResolveDisplayName(progress.preResolvePhase || '')})`}
+							</Text>
+						</Box>
+					)}
+				</Box>
+				<Box marginTop={1} flexDirection="column">
 					<Text>Hotkeys</Text>
-					<Text dimColor>Enter: import selected</Text>
-					<Text dimColor>Cmd/Ctrl+G: import all</Text>
+					<Text dimColor>↑/↓: navigate entries</Text>
 					<Text dimColor>v: toggle view</Text>
-					<Text dimColor>Cmd/Ctrl+S: skip on error: {skipOnError ? 'ON' : 'OFF'}</Text>
-					<Text dimColor>Cmd/Ctrl+X: back</Text>
+					{!isRunning ? (
+						<>
+							<Text dimColor>Enter: import selected</Text>
+							<Text dimColor>Cmd/Ctrl+G: import all</Text>
+							<Text dimColor>Cmd/Ctrl+S: skip on error: {skipOnError ? 'ON' : 'OFF'}</Text>
+							<Text dimColor>Cmd/Ctrl+X: back</Text>
+						</>
+					) : (
+						<Text dimColor color="yellow">Import running - navigation only</Text>
+					)}
 				</Box>
 			</Box>
 			<Box width={widthThird} flexDirection="column" marginX={1}>
@@ -211,9 +311,28 @@ export function Import() {
 					{selectedEntry ? (
 						<>
 							<Text>{selectedEntry.type}/{selectedEntry.handle}</Text>
+							<Text dimColor>Status: {getStatusDescription(selectedRow)}</Text>
 							<Box marginTop={1} flexDirection="column">
-								<Text dimColor>Ready. Enter to import this entry.</Text>
+								{entryCompletionStatus.get(selectedRow) === 'backreferences-completed' ? (
+									<Text color="green">✔ Entry fully imported</Text>
+								) : entryCompletionStatus.get(selectedRow) === 'backreferences-pending' ? (
+									<Text color="yellow">⏳ Processing backreferences...</Text>
+								) : entryCompletionStatus.get(selectedRow) === 'metaobject-created' ? (
+									<Text color="blue">◐ Metaobject created, backreferences pending</Text>
+								) : failed.has(selectedRow) ? (
+									<Text color="red">✖ Failed</Text>
+								) : isRunning ? (
+									<Text dimColor>⏸ Waiting in queue...</Text>
+								) : (
+									<Text dimColor>Ready. Enter to import this entry.</Text>
+								)}
 								{failed.has(selectedRow) ? <Text color="red">Last error: {failed.get(selectedRow)}</Text> : null}
+								{isRunning && progress?.current && progress.current === selectedEntry ? (
+									<Text color="cyan">🔄 Currently processing this entry</Text>
+								) : null}
+								{!isRunning && entryCompletionStatus.get(selectedRow) !== 'backreferences-completed' && !failed.has(selectedRow) ? (
+									<Text dimColor>Press Enter to import this entry</Text>
+								) : null}
 							</Box>
 						</>
 					) : (
@@ -221,11 +340,38 @@ export function Import() {
 					)}
 				</Panel>
 				<Panel title="Current import status" >
-					{progress?.current ? (
+					{progress ? (
 						<Box flexDirection="column">
-							<Text dimColor>Processing: {progress.current.type}/{progress.current.handle}</Text>
+							{progress.current ? (
+								<Text dimColor>Processing: {progress.current.type}/{progress.current.handle}</Text>
+							) : progress.phase === 'pre-resolve' ? (
+								<Text dimColor>Pre-resolving handle references...</Text>
+							) : null}
+							{progress.phase && <Text dimColor>Phase: {getPhaseDisplayName(progress.phase)}</Text>}
 							{progress.message ? <Text dimColor>{progress.message}</Text> : null}
-							{progress.error ? <Text color="red">{progress.error}</Text> : null}
+							{progress.phase === 'pre-resolve' && progress.preResolvePhase && (
+								<>
+									<Text dimColor>Pre-resolve: {getPreResolveDisplayName(progress.preResolvePhase)}</Text>
+									{progress.preResolveCurrentType && <Text dimColor>Type: {progress.preResolveCurrentType}</Text>}
+									{progress.preResolveTotal && progress.preResolveTotal > 0 && (
+										<Text dimColor>Progress: {progress.preResolveProcessed ?? 0}/{progress.preResolveTotal}</Text>
+									)}
+									{progress.preResolveApiCalls !== undefined && (
+										<Text dimColor>API calls: {progress.preResolveApiCalls}</Text>
+									)}
+									{progress.preResolveResolved !== undefined && progress.preResolveFailed !== undefined && (
+										<Text dimColor>Resolved: {progress.preResolveResolved}, Failed: {progress.preResolveFailed}</Text>
+									)}
+								</>
+							)}
+							{progress.phase === 'backreferences' && progress.backReferencesTotal ? (
+								<Text dimColor>Backreferences: {progress.backReferencesProcessed ?? 0}/{progress.backReferencesTotal}</Text>
+							) : null}
+							{progress.error ? (
+								<Box marginTop={1}>
+									<Text color="red">⚠ Error: {progress.error}</Text>
+								</Box>
+							) : null}
 						</Box>
 					) : (
 						<Text dimColor>Idle</Text>

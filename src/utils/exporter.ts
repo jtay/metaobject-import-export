@@ -33,7 +33,7 @@ export async function runExport(client: ShopifyGraphQLClient, opts: ExportOption
 		let fetchedCount = 0;
 		let backRefCount = 0;
 		opts.onProgress?.({ phase: 'fetch', message: `Fetching ${type}…`, currentType: type, count: 0 });
-		const nodes = await fetchAllMetaobjects(client, type, async (nodesPage) => {
+		void await fetchAllMetaobjects(client, type, async (nodesPage) => {
 			fetchedCount += nodesPage.length;
 			opts.onProgress?.({ phase: 'fetch', message: `Fetched ${fetchedCount}`, currentType: type, count: fetchedCount, backRefCount: opts.includeBackReferences ? backRefCount : undefined });
 			const paginationPromises: Array<Promise<void>> = [];

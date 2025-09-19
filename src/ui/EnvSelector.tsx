@@ -8,7 +8,7 @@ type SelectItem = { label: string; value: EnvironmentFile; key?: string };
 export function EnvSelector() {
 	const { availableEnvs, selectEnv, refreshEnvs } = useEnvironment();
 
-	useEffect(() => { refreshEnvs(); }, []);
+	useEffect(() => { refreshEnvs(); }, [refreshEnvs]);
 
 	const items: SelectItem[] = useMemo(() => {
 		return availableEnvs.map((env) => ({ label: env.name, value: env }));

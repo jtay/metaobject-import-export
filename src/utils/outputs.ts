@@ -2,6 +2,8 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { parseExportFile } from '@utils/schema';
 
+const ignoreFiles = ['.gitkeep'];
+
 export type OutputFile = {
 	name: string;
 	path: string;
@@ -19,6 +21,7 @@ export function listOutputFiles(cwd: string, envNames: string[] = []): OutputFil
 	for (const e of entries) {
 		if (!e.isFile()) continue;
 		const name = e.name;
+		if (ignoreFiles.includes(name)) continue;
 		const filePath = path.join(dir, name);
 		try {
 			const stat = fs.statSync(filePath);
